@@ -77,3 +77,24 @@ export interface ShsRecord {
 }
 
 export type CategoryType = 'ES' | 'JHS' | 'SHS'
+
+export type TransferType = 'IN' | 'OUT'
+
+/**
+ * A single teacher movement entry from the Deployment tab.
+ * Each record adds 1 to the target school's Transfer In or Transfer Out
+ * (and to the selected subject for JHS / SHS).
+ */
+export interface DeploymentRecord {
+  id: string
+  category: CategoryType
+  lastName: string
+  firstName: string
+  middleName: string
+  schoolName: string
+  toSchoolName?: string
+  currentPosition: string
+  dateAdded: string
+  transferType: TransferType
+  subject?: JhsSubject | ShsSubject
+}

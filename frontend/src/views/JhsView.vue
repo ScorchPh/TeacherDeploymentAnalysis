@@ -3,6 +3,13 @@ import { ref, computed } from 'vue'
 import { tnaStore } from '../stores/tnaStore'
 import { JHS_SUBJECTS, type JhsRecord, type JhsSubject } from '../types/tna'
 import ImportModal from '../components/ImportModal.vue'
+import DeploymentTab from '../components/DeploymentTab.vue'
+import { downloadTemplateFile, exportCategoryBackupExcel, type ParsedImportRow } from '../utils/excelTemplate'
+
+const activeTab = ref<'ANALYSIS' | 'DEPLOYMENT'>('ANALYSIS')
+const deploymentCount = computed(
+  () => tnaStore.deploymentRecords.filter((d) => d.category === 'JHS').length
+)
 
 const searchQuery = ref('')
 const statusFilter = ref<'ALL' | 'NEEDS' | 'SURPLUS'>('ALL')
@@ -125,8 +132,7 @@ function deleteRecord(id: string, name: string) {
   }
 }
 
-function handleImport(importedData: any[]) {
-  // Support imported rows
+function handleImport(importedData: ParsedImportRow[]) {
   importedData.forEach((row) => {
     const existingIdx = tnaStore.jhsRecords.findIndex(
       (r) =>
@@ -137,20 +143,32 @@ function handleImport(importedData: any[]) {
 
     if (existingIdx !== -1 && tnaStore.jhsRecords[existingIdx]) {
       const cur = tnaStore.jhsRecords[existingIdx]!
-      // distribute or assign total
-      if (row.required !== undefined) {
-        // If imported has subjects or just total, assign
+      if (row.schoolId) cur.schoolId = String(row.schoolId)
+      if (row.requiredBySubject && row.existingBySubject) {
+        JHS_SUBJECTS.forEach((s) => {
+          cur.required[s] = Number(row.requiredBySubject![s]) || 0
+          cur.existing[s] = Number(row.existingBySubject![s]) || 0
+        })
+      } else if (row.required !== undefined) {
         cur.required['Filipino'] = Number(row.required) || cur.required['Filipino']
       }
     } else if (row.schoolName || row.schoolId) {
       const fresh = initForm()
       fresh.schoolId = String(row.schoolId || '')
       fresh.schoolName = String(row.schoolName || 'Unnamed JHS')
-      fresh.required['Filipino'] = Number(row.required) || 0
-      fresh.existing['Filipino'] = Number(row.existing) || 0
+      if (row.requiredBySubject && row.existingBySubject) {
+        JHS_SUBJECTS.forEach((s) => {
+          fresh.required[s] = Number(row.requiredBySubject![s]) || 0
+          fresh.existing[s] = Number(row.existingBySubject![s]) || 0
+        })
+      } else {
+        fresh.required['Filipino'] = Number(row.required) || 0
+        fresh.existing['Filipino'] = Number(row.existing) || 0
+      }
       tnaStore.addJhsRecord(fresh)
     }
   })
+  tnaStore.clearDeploymentsByCategory('JHS')
 }
 
 function resetToDefault() {
@@ -209,6 +227,18 @@ function resetToDefault() {
       </div>
     </div>
 
+    <!-- Page Tabs: Needs Analysis / Deployment -->
+    <div class="page-tabs">
+      <button class="page-tab" :class="{ active: activeTab === 'ANALYSIS' }" @click="activeTab = 'ANALYSIS'">
+        📊 Needs Analysis
+      </button>
+      <button class="page-tab" :class="{ active: activeTab === 'DEPLOYMENT' }" @click="activeTab = 'DEPLOYMENT'">
+        📋 Deployment
+        <span class="page-tab-badge">{{ deploymentCount }}</span>
+      </button>
+    </div>
+
+    <template v-if="activeTab === 'ANALYSIS'">
     <!-- Table Toolbar -->
     <div class="toolbar-box">
       <div class="toolbar-left">
@@ -286,6 +316,12 @@ function resetToDefault() {
       </div>
 
       <div class="toolbar-right">
+        <button class="btn btn-secondary" title="Download Excel backup of JHS data & deployments" @click="exportCategoryBackupExcel('JHS')">
+          💾 Export Backup
+        </button>
+        <button class="btn btn-secondary" title="Download Excel template for JHS import" @click="downloadTemplateFile('JHS')">
+          📄 Template
+        </button>
         <button class="btn btn-secondary" @click="isImportModalOpen = true">
           📥 Import Data
         </button>
@@ -540,6 +576,9 @@ function resetToDefault() {
       </div>
     </div>
 
+    </template>
+    <DeploymentTab v-else category="JHS" />
+
     <!-- Import Modal -->
     <ImportModal
       :is-open="isImportModalOpen"
@@ -591,8 +630,8 @@ function resetToDefault() {
                   <td class="font-bold">{{ subj }}</td>
                   <td><input v-model.number="formState.required[subj]" type="number" min="0" class="mini-input" /></td>
                   <td><input v-model.number="formState.existing[subj]" type="number" min="0" class="mini-input" /></td>
-                  <td><input v-model.number="formState.transferOut[subj]" type="number" min="0" class="mini-input" /></td>
-                  <td><input v-model.number="formState.transferIn[subj]" type="number" min="0" class="mini-input" /></td>
+                  <td><input v-model.number="formState.transferOut[subj]" type="number" min="0" class="mini-input" disabled title="Managed in the Deployment tab" /></td>
+                  <td><input v-model.number="formState.transferIn[subj]" type="number" min="0" class="mini-input" disabled title="Managed in the Deployment tab" /></td>
                   <td class="col-num font-semibold" :class="(formState.required[subj] - formState.existing[subj]) > 0 ? 'text-red' : 'text-green'">
                     {{ formState.required[subj] - formState.existing[subj] }}
                   </td>
@@ -617,6 +656,51 @@ function resetToDefault() {
 </template>
 
 <style scoped>
+/* Page Tabs */
+.page-tabs {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 2px solid var(--color-border);
+}
+.page-tab {
+  border: none;
+  background: transparent;
+  padding: 0.6rem 1.1rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+.page-tab:hover {
+  color: #0f172a;
+}
+.page-tab.active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+}
+.page-tab-badge {
+  background: #e2e8f0;
+  color: #334155;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+}
+.page-tab.active .page-tab-badge {
+  background: var(--color-primary);
+  color: #fff;
+}
+input:disabled {
+  background: #f1f5f9;
+  color: #64748b;
+  cursor: not-allowed;
+}
+
 .analysis-view {
   display: flex;
   flex-direction: column;

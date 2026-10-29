@@ -1,6 +1,12 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import * as XLSX from 'xlsx'
+import { ref, computed } from 'vue'
+import {
+  downloadTemplateFile,
+  exportCategoryBackupExcel,
+  parseCategoryWorkbook,
+  type ParsedImportRow,
+} from '../utils/excelTemplate'
+import { tnaStore } from '../stores/tnaStore'
 
 const props = defineProps<{
   category: 'ES' | 'JHS' | 'SHS'
@@ -9,15 +15,22 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'close'): void
-  (e: 'import', data: any[]): void
+  (e: 'import', data: ParsedImportRow[]): void
 }>()
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const selectedFile = ref<File | null>(null)
-const previewRows = ref<any[]>([])
+const parsedAllRows = ref<ParsedImportRow[]>([])
+const previewRows = ref<ParsedImportRow[]>([])
 const parsedCount = ref(0)
 const errorMessage = ref('')
 const isProcessing = ref(false)
+const showBackupConfirmModal = ref(false)
+const hasDownloadedBackup = ref(false)
+
+const currentDeployCount = computed(
+  () => tnaStore.deploymentRecords.filter((d) => d.category === props.category).length
+)
 
 function handleFileChange(event: Event) {
   const target = event.target as HTMLInputElement
@@ -40,61 +53,17 @@ async function parseFile(file: File) {
 
   try {
     const data = await file.arrayBuffer()
-    const workbook = XLSX.read(data, { type: 'array' })
-    const sheetName = workbook.SheetNames[0]
-    if (!sheetName) {
-      errorMessage.value = 'No sheets found in workbook.'
-      isProcessing.value = false
+    const result = parseCategoryWorkbook(data, props.category)
+    if (result.error) {
+      errorMessage.value = result.error
+      parsedAllRows.value = []
+      previewRows.value = []
+      parsedCount.value = 0
       return
     }
-    const worksheet = workbook.Sheets[sheetName]
-    if (!worksheet) {
-      errorMessage.value = 'The selected worksheet could not be read.'
-      isProcessing.value = false
-      return
-    }
-    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][]
-
-    if (!jsonData || jsonData.length < 2) {
-      errorMessage.value = 'The selected file is empty or missing data rows.'
-      isProcessing.value = false
-      return
-    }
-
-    // Header matching (case-insensitive and trimmed)
-    const rawHeaders = (jsonData[0] || []).map(h => String(h || '').trim().toLowerCase())
-    
-    // Find column indexes
-    const schoolNameIdx = rawHeaders.findIndex(h => h.includes('school') && (h.includes('name') || !h.includes('id')))
-    const schoolIdIdx = rawHeaders.findIndex(h => h.includes('id') || h.includes('school id'))
-    const reqIdx = rawHeaders.findIndex(h => h.includes('req') || h.includes('required'))
-    const existIdx = rawHeaders.findIndex(h => h.includes('exist') || h.includes('existing'))
-    const tOutIdx = rawHeaders.findIndex(h => h.includes('out') || h.includes('t-out') || h.includes('transfer out'))
-    const tInIdx = rawHeaders.findIndex(h => h.includes('in') || h.includes('t-in') || h.includes('transfer in'))
-
-    const parsed: any[] = []
-
-    for (let i = 1; i < jsonData.length; i++) {
-      const row = jsonData[i]
-      if (!row || row.length === 0) continue
-
-      const sName = schoolNameIdx !== -1 ? String(row[schoolNameIdx] || '').trim() : String(row[1] || '').trim()
-      const sId = schoolIdIdx !== -1 ? String(row[schoolIdIdx] || '').trim() : String(row[0] || '').trim()
-
-      if (!sName && !sId) continue
-
-      parsed.push({
-        schoolId: sId,
-        schoolName: sName,
-        required: reqIdx !== -1 ? Number(row[reqIdx]) || 0 : Number(row[2]) || 0,
-        existing: existIdx !== -1 ? Number(row[existIdx]) || 0 : Number(row[3]) || 0,
-        transferOut: tOutIdx !== -1 ? Number(row[tOutIdx]) || 0 : Number(row[4]) || 0,
-        transferIn: tInIdx !== -1 ? Number(row[tInIdx]) || 0 : Number(row[5]) || 0,
-      })
-    }
-
-    parsedCount.value = parsed.length
-    previewRows.value = parsed.slice(0, 5)
+    parsedAllRows.value = result.rows
+    parsedCount.value = result.rows.length
+    previewRows.value = result.rows.slice(0, 5)
   } catch (err: any) {
     errorMessage.value = `Error parsing file: ${err.message || 'Invalid Excel or CSV file'}`
   } finally {
@@ -102,69 +71,36 @@ async function parseFile(file: File) {
   }
 }
 
-function confirmImport() {
-  if (selectedFile.value && previewRows.value.length > 0) {
-    // Re-run parse to get full list
-    const file = selectedFile.value
-    file.arrayBuffer().then(data => {
-      const workbook = XLSX.read(data, { type: 'array' })
-      const sheetName = workbook.SheetNames[0]
-      if (!sheetName) return
-      const worksheet = workbook.Sheets[sheetName]
-      if (!worksheet) return
-      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][]
-      
-      const rawHeaders = (jsonData[0] || []).map(h => String(h || '').trim().toLowerCase())
-      const schoolNameIdx = rawHeaders.findIndex(h => h.includes('school') && (h.includes('name') || !h.includes('id')))
-      const schoolIdIdx = rawHeaders.findIndex(h => h.includes('id') || h.includes('school id'))
-      const reqIdx = rawHeaders.findIndex(h => h.includes('req') || h.includes('required'))
-      const existIdx = rawHeaders.findIndex(h => h.includes('exist') || h.includes('existing'))
-      const tOutIdx = rawHeaders.findIndex(h => h.includes('out') || h.includes('t-out') || h.includes('transfer out'))
-      const tInIdx = rawHeaders.findIndex(h => h.includes('in') || h.includes('t-in') || h.includes('transfer in'))
-
-      const allRows: any[] = []
-      for (let i = 1; i < jsonData.length; i++) {
-        const row = jsonData[i]
-        if (!row || row.length === 0) continue
-
-        const sName = schoolNameIdx !== -1 ? String(row[schoolNameIdx] || '').trim() : String(row[1] || '').trim()
-        const sId = schoolIdIdx !== -1 ? String(row[schoolIdIdx] || '').trim() : String(row[0] || '').trim()
-
-        if (!sName && !sId) continue
-
-        allRows.push({
-          schoolId: sId,
-          schoolName: sName,
-          required: reqIdx !== -1 ? Number(row[reqIdx]) || 0 : Number(row[2]) || 0,
-          existing: existIdx !== -1 ? Number(row[existIdx]) || 0 : Number(row[3]) || 0,
-          transferOut: tOutIdx !== -1 ? Number(row[tOutIdx]) || 0 : Number(row[4]) || 0,
-          transferIn: tInIdx !== -1 ? Number(row[tInIdx]) || 0 : Number(row[5]) || 0,
-        })
-      }
-
-      emit('import', allRows)
-      closeModal()
-    })
+function requestConfirmImport() {
+  if (parsedAllRows.value.length > 0) {
+    showBackupConfirmModal.value = true
   }
 }
 
+function proceedWithImport() {
+  if (parsedAllRows.value.length > 0) {
+    emit('import', parsedAllRows.value)
+    closeModal()
+  }
+}
+
+function downloadBackup() {
+  exportCategoryBackupExcel(props.category)
+  hasDownloadedBackup.value = true
+}
+
 function downloadTemplate() {
-  const wsData = [
-    ['School ID', 'School Name', 'Required', 'Existing', 'Transfer Out', 'Transfer In'],
-    ['119964', 'Sample Elementary School', 50, 48, 1, 0],
-    ['119965', 'Second Sample ES', 45, 45, 0, 2],
-  ]
-  const ws = XLSX.utils.aoa_to_sheet(wsData)
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, `${props.category}_Template`)
-  XLSX.writeFile(wb, `DepEd_${props.category}_TNA_Template.xlsx`)
+  downloadTemplateFile(props.category)
 }
 
 function closeModal() {
   selectedFile.value = null
+  parsedAllRows.value = []
   previewRows.value = []
   errorMessage.value = ''
   parsedCount.value = 0
+  showBackupConfirmModal.value = false
+  hasDownloadedBackup.value = false
   emit('close')
 }
 </script>
@@ -184,14 +120,19 @@ function closeModal() {
       </div>
 
       <div class="modal-body">
-        <!-- Template Download Note -->
+        <!-- Template & Backup Download Note -->
         <div class="template-bar">
           <div class="template-info">
-            <span>Supported columns: <strong>School ID, School Name, Required, Existing, Transfer Out, Transfer In</strong></span>
+            <span>Need the format or want to back up current {{ category }} records before importing?</span>
           </div>
-          <button class="btn btn-secondary btn-sm" @click="downloadTemplate">
-            📄 Download Sample Excel
-          </button>
+          <div class="template-actions">
+            <button class="btn btn-secondary btn-sm" @click="downloadBackup">
+              💾 Backup Current Data
+            </button>
+            <button class="btn btn-secondary btn-sm" @click="downloadTemplate">
+              📄 Download Sample Excel
+            </button>
+          </div>
         </div>
 
         <!-- Drag & Drop Zone -->
@@ -275,10 +216,38 @@ function closeModal() {
         <button
           class="btn btn-primary"
           :disabled="previewRows.length === 0 || isProcessing"
-          @click="confirmImport"
+          @click="requestConfirmImport"
         >
           Confirm & Import {{ parsedCount }} Records
         </button>
+      </div>
+
+      <!-- Pre-Import Backup Reminder Confirmation Modal -->
+      <div v-if="showBackupConfirmModal" class="backup-confirm-overlay" @click.self="showBackupConfirmModal = false">
+        <div class="backup-confirm-card">
+          <div class="backup-confirm-icon">⚠️</div>
+          <h4 class="backup-confirm-title">Have you downloaded a backup copy of your current data?</h4>
+          <p class="backup-confirm-desc">
+            Importing new <strong>{{ category }}</strong> data will update matching school records and
+            <strong>clear {{ currentDeployCount }} existing {{ category }} Deployment record(s)</strong>
+            so fresh transfer counts start at 0.
+          </p>
+
+          <div class="backup-download-box">
+            <button class="btn btn-backup-dl" @click="downloadBackup">
+              💾 {{ hasDownloadedBackup ? 'Backup Downloaded! (Click to Download Again)' : `Download ${category} Backup Excel (.xlsx) First` }}
+            </button>
+          </div>
+
+          <div class="backup-confirm-actions">
+            <button class="btn btn-secondary" @click="showBackupConfirmModal = false">
+              Go Back
+            </button>
+            <button class="btn btn-primary" @click="proceedWithImport">
+              ✅ Yes, I Have a Backup — Import Now
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -380,6 +349,87 @@ function closeModal() {
 .template-info {
   font-size: 0.82rem;
   color: #1e40af;
+}
+
+.template-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.backup-confirm-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.72);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  z-index: 20;
+}
+
+.backup-confirm-card {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 1.75rem;
+  max-width: 480px;
+  width: 100%;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  border: 1px solid #fde68a;
+}
+
+.backup-confirm-icon {
+  font-size: 2.4rem;
+  line-height: 1;
+}
+
+.backup-confirm-title {
+  margin: 0;
+  font-size: 1.08rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.backup-confirm-desc {
+  margin: 0;
+  font-size: 0.86rem;
+  color: #475569;
+  line-height: 1.5;
+}
+
+.backup-download-box {
+  background: #fffbeb;
+  border: 1px dashed #f59e0b;
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.btn-backup-dl {
+  width: 100%;
+  background: #f59e0b;
+  color: #ffffff;
+  font-weight: 700;
+  border: none;
+  padding: 0.6rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.btn-backup-dl:hover {
+  background: #d97706;
+}
+
+.backup-confirm-actions {
+  display: flex;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 0.25rem;
 }
 
 .btn-sm {

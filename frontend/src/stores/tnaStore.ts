@@ -1,10 +1,19 @@
 import { reactive, computed, watch } from 'vue'
-import type { EsRecord, JhsRecord, ShsRecord, JhsSubject, ShsSubject } from '../types/tna'
+import type {
+  EsRecord,
+  JhsRecord,
+  ShsRecord,
+  JhsSubject,
+  ShsSubject,
+  CategoryType,
+  DeploymentRecord,
+} from '../types/tna'
 import { JHS_SUBJECTS, SHS_SUBJECTS } from '../types/tna'
 
 const ES_STORAGE_KEY = 'tna_es_records_v1'
 const JHS_STORAGE_KEY = 'tna_jhs_records_v1'
 const SHS_STORAGE_KEY = 'tna_shs_records_v1'
+const DEPLOYMENT_STORAGE_KEY = 'tna_deployment_records_v1'
 
 // Initial ES Data from DepEd Lapu-Lapu City files
 const initialEsData: EsRecord[] = [
@@ -125,6 +134,7 @@ export const tnaStore = reactive({
   esRecords: loadStored<EsRecord>(ES_STORAGE_KEY, initialEsData),
   jhsRecords: loadStored<JhsRecord>(JHS_STORAGE_KEY, initialJhsData),
   shsRecords: loadStored<ShsRecord>(SHS_STORAGE_KEY, initialShsData),
+  deploymentRecords: loadStored<DeploymentRecord>(DEPLOYMENT_STORAGE_KEY, []),
 
   // Calculation helpers for ES
   calcEsGap(r: EsRecord): number {
@@ -195,11 +205,15 @@ export const tnaStore = reactive({
       ...record,
       id: Date.now().toString(),
     })
+    this.syncTransfers('ES')
   },
   updateEsRecord(id: string, updates: Partial<EsRecord>) {
     const idx = this.esRecords.findIndex(r => r.id === id)
     if (idx !== -1 && this.esRecords[idx]) {
+      const oldName = this.esRecords[idx].schoolName
       Object.assign(this.esRecords[idx], updates)
+      if (updates.schoolName) this.renameSchoolInDeployments('ES', oldName, updates.schoolName)
+      this.syncTransfers('ES')
     }
   },
   deleteEsRecord(id: string) {
@@ -212,11 +226,15 @@ export const tnaStore = reactive({
       ...record,
       id: Date.now().toString(),
     })
+    this.syncTransfers('JHS')
   },
   updateJhsRecord(id: string, updates: Partial<JhsRecord>) {
     const idx = this.jhsRecords.findIndex(r => r.id === id)
     if (idx !== -1 && this.jhsRecords[idx]) {
+      const oldName = this.jhsRecords[idx].schoolName
       Object.assign(this.jhsRecords[idx], updates)
+      if (updates.schoolName) this.renameSchoolInDeployments('JHS', oldName, updates.schoolName)
+      this.syncTransfers('JHS')
     }
   },
   deleteJhsRecord(id: string) {
@@ -229,11 +247,15 @@ export const tnaStore = reactive({
       ...record,
       id: Date.now().toString(),
     })
+    this.syncTransfers('SHS')
   },
   updateShsRecord(id: string, updates: Partial<ShsRecord>) {
     const idx = this.shsRecords.findIndex(r => r.id === id)
     if (idx !== -1 && this.shsRecords[idx]) {
+      const oldName = this.shsRecords[idx].schoolName
       Object.assign(this.shsRecords[idx], updates)
+      if (updates.schoolName) this.renameSchoolInDeployments('SHS', oldName, updates.schoolName)
+      this.syncTransfers('SHS')
     }
   },
   deleteShsRecord(id: string) {
@@ -267,6 +289,7 @@ export const tnaStore = reactive({
         })
       }
     })
+    this.clearDeploymentsByCategory('ES')
   },
 
   // Reset to initial data
@@ -274,8 +297,179 @@ export const tnaStore = reactive({
     this.esRecords = JSON.parse(JSON.stringify(initialEsData))
     this.jhsRecords = JSON.parse(JSON.stringify(initialJhsData))
     this.shsRecords = JSON.parse(JSON.stringify(initialShsData))
-  }
+    this.syncAllTransfers()
+  },
+
+  // ---------------------------------------------------------------------------
+  // Deployment (Transfer In / Transfer Out) records
+  // ---------------------------------------------------------------------------
+
+  getSchoolsForCategory(category: CategoryType): { schoolName: string }[] {
+    if (category === 'ES') return this.esRecords
+    if (category === 'JHS') return this.jhsRecords
+    return this.shsRecords
+  },
+
+  // Make sure the school named in a deployment exists in its category table
+  ensureSchoolExists(category: CategoryType, schoolName: string) {
+    const name = schoolName.trim()
+    if (!name) return
+    const exists = this.getSchoolsForCategory(category).some(
+      s => s.schoolName.trim().toLowerCase() === name.toLowerCase()
+    )
+    if (exists) return
+
+    if (category === 'ES') {
+      this.esRecords.push({
+        id: Date.now().toString(),
+        schoolId: '',
+        schoolName: name,
+        required: 0,
+        existing: 0,
+        transferOut: 0,
+        transferIn: 0,
+      })
+    } else if (category === 'JHS') {
+      this.jhsRecords.push({
+        id: Date.now().toString(),
+        schoolId: '',
+        schoolName: name,
+        required: createDefaultSubjectRecord(JHS_SUBJECTS),
+        existing: createDefaultSubjectRecord(JHS_SUBJECTS),
+        transferOut: createDefaultSubjectRecord(JHS_SUBJECTS),
+        transferIn: createDefaultSubjectRecord(JHS_SUBJECTS),
+      })
+    } else {
+      this.shsRecords.push({
+        id: Date.now().toString(),
+        schoolId: '',
+        schoolName: name,
+        required: createDefaultSubjectRecord(SHS_SUBJECTS),
+        existing: createDefaultSubjectRecord(SHS_SUBJECTS),
+        transferOut: createDefaultSubjectRecord(SHS_SUBJECTS),
+        transferIn: createDefaultSubjectRecord(SHS_SUBJECTS),
+      })
+    }
+  },
+
+  // Recalculate every school's Transfer In / Transfer Out from the Deployment list
+  syncTransfers(category: CategoryType) {
+    const deployments = this.deploymentRecords.filter(d => d.category === category)
+    const key = (n?: string) => (n || '').trim().toLowerCase()
+
+    if (category === 'ES') {
+      this.esRecords.forEach(school => {
+        const sKey = key(school.schoolName)
+        school.transferOut = deployments.filter(
+          d => d.transferType === 'OUT' && key(d.schoolName) === sKey
+        ).length
+        school.transferIn = deployments.filter(
+          d =>
+            (d.transferType === 'IN' && key(d.schoolName) === sKey) ||
+            (d.transferType === 'OUT' && d.toSchoolName && key(d.toSchoolName) === sKey)
+        ).length
+      })
+      return
+    }
+
+    const subjects = (category === 'JHS' ? JHS_SUBJECTS : SHS_SUBJECTS) as string[]
+    const schools = (category === 'JHS' ? this.jhsRecords : this.shsRecords) as {
+      schoolName: string
+      transferIn: Record<string, number>
+      transferOut: Record<string, number>
+    }[]
+
+    schools.forEach(school => {
+      const sKey = key(school.schoolName)
+      const tin: Record<string, number> = {}
+      const tout: Record<string, number> = {}
+      subjects.forEach(s => {
+        tin[s] = 0
+        tout[s] = 0
+      })
+      deployments.forEach(d => {
+        if (!d.subject || !subjects.includes(d.subject)) return
+        if (d.transferType === 'OUT') {
+          if (key(d.schoolName) === sKey) {
+            tout[d.subject] = (tout[d.subject] ?? 0) + 1
+          }
+          if (d.toSchoolName && key(d.toSchoolName) === sKey) {
+            tin[d.subject] = (tin[d.subject] ?? 0) + 1
+          }
+        } else if (d.transferType === 'IN') {
+          if (key(d.schoolName) === sKey) {
+            tin[d.subject] = (tin[d.subject] ?? 0) + 1
+          }
+        }
+      })
+      school.transferIn = tin
+      school.transferOut = tout
+    })
+  },
+
+  syncAllTransfers() {
+    this.syncTransfers('ES')
+    this.syncTransfers('JHS')
+    this.syncTransfers('SHS')
+  },
+
+  // Keep deployment entries pointing at a school when it gets renamed
+  renameSchoolInDeployments(category: CategoryType, oldName: string, newName: string) {
+    if (!oldName || !newName || oldName.trim().toLowerCase() === newName.trim().toLowerCase()) return
+    const oldKey = oldName.trim().toLowerCase()
+    this.deploymentRecords.forEach(d => {
+      if (d.category !== category) return
+      if (d.schoolName.trim().toLowerCase() === oldKey) {
+        d.schoolName = newName.trim()
+      }
+      if (d.toSchoolName && d.toSchoolName.trim().toLowerCase() === oldKey) {
+        d.toSchoolName = newName.trim()
+      }
+    })
+  },
+
+  addDeployment(record: Omit<DeploymentRecord, 'id'>) {
+    this.ensureSchoolExists(record.category, record.schoolName)
+    if (record.transferType === 'OUT' && record.toSchoolName) {
+      this.ensureSchoolExists(record.category, record.toSchoolName)
+    }
+    this.deploymentRecords.push({
+      ...record,
+      schoolName: record.schoolName.trim(),
+      toSchoolName: record.toSchoolName ? record.toSchoolName.trim() : undefined,
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    })
+    this.syncTransfers(record.category)
+  },
+
+  updateDeployment(id: string, updates: Partial<DeploymentRecord>) {
+    const cur = this.deploymentRecords.find(d => d.id === id)
+    if (!cur) return
+    Object.assign(cur, updates)
+    cur.schoolName = cur.schoolName.trim()
+    cur.toSchoolName = cur.toSchoolName ? cur.toSchoolName.trim() : undefined
+    this.ensureSchoolExists(cur.category, cur.schoolName)
+    if (cur.transferType === 'OUT' && cur.toSchoolName) {
+      this.ensureSchoolExists(cur.category, cur.toSchoolName)
+    }
+    this.syncTransfers(cur.category)
+  },
+
+  deleteDeployment(id: string) {
+    const cur = this.deploymentRecords.find(d => d.id === id)
+    if (!cur) return
+    this.deploymentRecords = this.deploymentRecords.filter(d => d.id !== id)
+    this.syncTransfers(cur.category)
+  },
+
+  clearDeploymentsByCategory(category: CategoryType) {
+    this.deploymentRecords = this.deploymentRecords.filter(d => d.category !== category)
+    this.syncTransfers(category)
+  },
 })
+
+// Transfer In / Transfer Out always come from the Deployment list
+tnaStore.syncAllTransfers()
 
 // Persistence watcher
 watch(
@@ -313,3 +507,16 @@ watch(
   },
   { deep: true }
 )
+
+watch(
+  () => tnaStore.deploymentRecords,
+  (val) => {
+    try {
+      localStorage.setItem(DEPLOYMENT_STORAGE_KEY, JSON.stringify(val))
+    } catch (e) {
+      console.error(e)
+    }
+  },
+  { deep: true }
+)
+
