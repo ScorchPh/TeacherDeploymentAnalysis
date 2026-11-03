@@ -599,8 +599,11 @@ function remove(d: DeploymentRecord) {
   border-bottom: 1px solid #f1f5f9;
   color: #1e293b;
 }
-.deploy-table tbody tr:hover {
-  background: #f8fafc;
+.deploy-table tbody tr:hover td {
+  background: #dbeafe;
+}
+.deploy-table tbody tr:hover td:first-child {
+  box-shadow: inset 4px 0 0 #3b82f6;
 }
 .col-no {
   width: 48px;
@@ -653,23 +656,21 @@ function remove(d: DeploymentRecord) {
   font-size: 0.75rem;
   font-weight: 600;
 }
-.badge {
-  display: inline-block;
-  padding: 0.2rem 0.6rem;
-  border-radius: 999px;
-  font-size: 0.74rem;
-  font-weight: 700;
-  white-space: nowrap;
-}
 .badge-in {
-  background: #ecfdf5;
-  color: #047857;
-  border: 1px solid #a7f3d0;
+  background: #059669 !important;
+  color: #ffffff !important;
+  border: 1.5px solid #065f46 !important;
 }
 .badge-out {
-  background: #fff7ed;
-  color: #c2410c;
-  border: 1px solid #fed7aa;
+  background: #ea580c !important;
+  color: #ffffff !important;
+  border: 1.5px solid #9a3412 !important;
+}
+.deploy-table tbody tr:hover .badge-in {
+  box-shadow: 0 0 0 3px #6ee7b7, 0 2px 6px rgba(5, 150, 105, 0.35);
+}
+.deploy-table tbody tr:hover .badge-out {
+  box-shadow: 0 0 0 3px #fdba74, 0 2px 6px rgba(234, 88, 12, 0.35);
 }
 .actions-wrap {
   display: flex;

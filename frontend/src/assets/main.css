@@ -160,13 +160,13 @@ html, body {
 
 /* High-Visibility Status Badge Styles */
 .badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   gap: 0.35rem;
-  padding: 0.35rem 0.75rem;
+  padding: 0.32rem 0.72rem;
   border-radius: 9999px;
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   font-weight: 800;
   line-height: 1.1;
   letter-spacing: 0.01em;
@@ -184,9 +184,9 @@ html, body {
 }
 
 .badge-danger {
-  background-color: #dc2626;
-  color: #ffffff;
-  border: 1.5px solid #991b1b;
+  background-color: #dc2626 !important;
+  color: #ffffff !important;
+  border: 1.5px solid #991b1b !important;
 }
 .badge-danger::before {
   background-color: #fecaca;
@@ -194,9 +194,9 @@ html, body {
 }
 
 .badge-surplus {
-  background-color: #0284c7;
-  color: #ffffff;
-  border: 1.5px solid #075985;
+  background-color: #0284c7 !important;
+  color: #ffffff !important;
+  border: 1.5px solid #075985 !important;
 }
 .badge-surplus::before {
   background-color: #bae6fd;
@@ -204,9 +204,9 @@ html, body {
 }
 
 .badge-success {
-  background-color: #16a34a;
-  color: #ffffff;
-  border: 1.5px solid #166534;
+  background-color: #16a34a !important;
+  color: #ffffff !important;
+  border: 1.5px solid #166534 !important;
 }
 .badge-success::before {
   background-color: #bbf7d0;
@@ -214,9 +214,9 @@ html, body {
 }
 
 .badge-neutral {
-  background-color: #e2e8f0;
-  color: #1e293b;
-  border: 1.5px solid #94a3b8;
+  background-color: #e2e8f0 !important;
+  color: #1e293b !important;
+  border: 1.5px solid #94a3b8 !important;
 }
 .badge-neutral::before {
   background-color: #64748b;
@@ -237,5 +237,55 @@ html, body {
 
 .ind-balanced {
   color: #15803d !important;
-  font-weight: 600 !important;
+  background-color: #f0fdf4 !important;
+  font-weight: 700 !important;
+}
+
+/* Amplify Color Indicators on Row Hover & Row Selection */
+tbody tr:hover td.ind-needs,
+tbody tr.row-selected td.ind-needs {
+  background-color: #fca5a5 !important;
+  color: #7f1d1d !important;
+  box-shadow: inset 0 0 0 2px #dc2626 !important;
+}
+
+tbody tr:hover td.ind-excess,
+tbody tr.row-selected td.ind-excess {
+  background-color: #7dd3fc !important;
+  color: #0c4a6e !important;
+  box-shadow: inset 0 0 0 2px #0284c7 !important;
+}
+
+tbody tr:hover td.ind-balanced,
+tbody tr.row-selected td.ind-balanced {
+  background-color: #86efac !important;
+  color: #14532d !important;
+  box-shadow: inset 0 0 0 1.5px #16a34a !important;
+}
+
+tbody tr:hover .badge,
+tbody tr.row-selected .badge {
+  transform: scale(1.06);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+tbody tr:hover .badge-danger,
+tbody tr.row-selected .badge-danger {
+  background-color: #b91c1c !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 0 3px #fca5a5, 0 2px 6px rgba(185, 28, 28, 0.35) !important;
+}
+
+tbody tr:hover .badge-surplus,
+tbody tr.row-selected .badge-surplus {
+  background-color: #0369a1 !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 0 3px #7dd3fc, 0 2px 6px rgba(3, 105, 161, 0.35) !important;
+}
+
+tbody tr:hover .badge-success,
+tbody tr.row-selected .badge-success {
+  background-color: #15803d !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 0 3px #86efac, 0 2px 6px rgba(21, 128, 61, 0.35) !important;
 }

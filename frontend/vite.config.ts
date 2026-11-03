@@ -1,4 +1,6 @@
 import { fileURLToPath, URL } from 'node:url'
+import fs from 'node:fs'
+import path from 'node:path'
 
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
@@ -9,6 +11,19 @@ export default defineConfig({
   plugins: [
     vue(),
     vueDevTools(),
+    {
+      name: 'spa-route-fallbacks',
+      closeBundle() {
+        const distDir = fileURLToPath(new URL('./dist', import.meta.url))
+        const indexHtml = path.join(distDir, 'index.html')
+        if (!fs.existsSync(indexHtml)) return
+        for (const route of ['dashboard', 'es', 'jhs', 'shs']) {
+          const dir = path.join(distDir, route)
+          fs.mkdirSync(dir, { recursive: true })
+          fs.copyFileSync(indexHtml, path.join(dir, 'index.html'))
+        }
+      },
+    },
   ],
   resolve: {
     alias: {

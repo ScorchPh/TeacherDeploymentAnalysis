@@ -57,7 +57,7 @@ CREATE TABLE `jhs_schools` (
 CREATE TABLE `jhs_subject_needs` (
   `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `jhs_school_id` INT UNSIGNED NOT NULL,
-  `subject` ENUM('Filipino','English','Math','Science','AralPan','TLE','MAPEH','EsP','SPED') NOT NULL,
+  `subject` VARCHAR(64) NOT NULL,
   `required` INT NOT NULL DEFAULT 0,
   `existing` INT NOT NULL DEFAULT 0,
   `transfer_out` INT NOT NULL DEFAULT 0,
@@ -86,7 +86,7 @@ CREATE TABLE `shs_schools` (
 CREATE TABLE `shs_subject_needs` (
   `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `shs_school_id` INT UNSIGNED NOT NULL,
-  `subject` ENUM('ABM','AralPan','English','Filipino','MAPEH','Math','Science','TVL-AFA','TVL-HE','TVL-IA','TVL-ICT') NOT NULL,
+  `subject` VARCHAR(64) NOT NULL,
   `required` INT NOT NULL DEFAULT 0,
   `existing` INT NOT NULL DEFAULT 0,
   `transfer_out` INT NOT NULL DEFAULT 0,

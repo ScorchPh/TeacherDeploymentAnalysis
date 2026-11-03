@@ -300,6 +300,7 @@ export const tnaStore = reactive({
         })
       }
     })
+    this.deduplicateSchools()
     this.clearDeploymentsByCategory('ES')
   },
 
@@ -539,7 +540,34 @@ export const tnaStore = reactive({
     this.syncTransfers(category)
   },
 
+  deduplicateSchools() {
+    const seenEs = new Set<string>()
+    this.esRecords = this.esRecords.filter(r => {
+      const key = r.schoolName.trim().toLowerCase()
+      if (!key || seenEs.has(key)) return false
+      seenEs.add(key)
+      return true
+    })
+
+    const seenJhs = new Set<string>()
+    this.jhsRecords = this.jhsRecords.filter(r => {
+      const key = r.schoolName.trim().toLowerCase()
+      if (!key || seenJhs.has(key)) return false
+      seenJhs.add(key)
+      return true
+    })
+
+    const seenShs = new Set<string>()
+    this.shsRecords = this.shsRecords.filter(r => {
+      const key = r.schoolName.trim().toLowerCase()
+      if (!key || seenShs.has(key)) return false
+      seenShs.add(key)
+      return true
+    })
+  },
+
   normalizeAllIntegers() {
+    this.deduplicateSchools()
     // Ensure MAPEH is always present in shsSubjects if upgrading from an older version
     if (!this.shsSubjects.some(s => s.toLowerCase() === 'mapeh')) {
       const filIdx = this.shsSubjects.findIndex(s => s.toLowerCase() === 'filipino')

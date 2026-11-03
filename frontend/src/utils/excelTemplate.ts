@@ -72,39 +72,208 @@ export function downloadTemplateFile(category: CategoryType) {
   XLSX.writeFile(wb, `DepEd_${category}_TNA_Template.xlsx`)
 }
 
-function buildDeploymentSheetRows(category: CategoryType): (string | number)[][] {
+function buildDeploymentWorksheet(category: CategoryType): XLSX.WorkSheet {
   const isSubjectLevel = category !== 'ES'
-  const headers: string[] = [
-    'No.',
-    'Last Name',
-    'First Name',
-    'Middle Name',
-    'Transfer Type',
-    'School / From School',
-    'To School (Transfer In)',
-  ]
-  if (isSubjectLevel) headers.push('Subject')
-  headers.push('Current Position', 'Date Added')
-
+  const colCount = isSubjectLevel ? 9 : 8
   const records = tnaStore.deploymentRecords.filter((d) => d.category === category)
-  const rows: (string | number)[][] = [headers]
 
-  records.forEach((d, idx) => {
-    const row: (string | number)[] = [
-      idx + 1,
-      d.lastName,
-      d.firstName,
-      d.middleName || '',
-      d.transferType === 'IN' ? 'Transfer In' : 'Transfer Out',
-      d.schoolName,
-      d.transferType === 'OUT' ? d.toSchoolName || '' : '',
-    ]
-    if (isSubjectLevel) row.push(d.subject || '')
-    row.push(d.currentPosition || '', d.dateAdded || '')
-    rows.push(row)
+  interface SchoolDeployEntry {
+    lastName: string
+    firstName: string
+    middleName: string
+    schoolDisplay: string
+    subject: string
+    currentPosition: string
+    dateAdded: string
+    transferLabel: string
+  }
+
+  // Group records by school (only schools with at least 1 deployment record)
+  const schoolMap = new Map<string, SchoolDeployEntry[]>()
+
+  const addEntry = (schoolName: string, entry: SchoolDeployEntry) => {
+    const clean = schoolName.trim()
+    if (!clean) return
+    if (!schoolMap.has(clean)) {
+      schoolMap.set(clean, [])
+    }
+    schoolMap.get(clean)!.push(entry)
+  }
+
+  records.forEach((d) => {
+    if (d.transferType === 'IN') {
+      addEntry(d.schoolName, {
+        lastName: d.lastName,
+        firstName: d.firstName,
+        middleName: d.middleName || '—',
+        schoolDisplay: d.schoolName,
+        subject: d.subject || '—',
+        currentPosition: d.currentPosition || '—',
+        dateAdded: d.dateAdded || '—',
+        transferLabel: 'Transfer In',
+      })
+    } else {
+      const routeDisplay = d.toSchoolName
+        ? `${d.schoolName} → ${d.toSchoolName}`
+        : d.schoolName
+      addEntry(d.schoolName, {
+        lastName: d.lastName,
+        firstName: d.firstName,
+        middleName: d.middleName || '—',
+        schoolDisplay: routeDisplay,
+        subject: d.subject || '—',
+        currentPosition: d.currentPosition || '—',
+        dateAdded: d.dateAdded || '—',
+        transferLabel: 'Transfer Out',
+      })
+      if (d.toSchoolName && d.toSchoolName.trim() !== d.schoolName.trim()) {
+        addEntry(d.toSchoolName, {
+          lastName: d.lastName,
+          firstName: d.firstName,
+          middleName: d.middleName || '—',
+          schoolDisplay: routeDisplay,
+          subject: d.subject || '—',
+          currentPosition: d.currentPosition || '—',
+          dateAdded: d.dateAdded || '—',
+          transferLabel: `Transfer In (From ${d.schoolName})`,
+        })
+      }
+    }
   })
 
-  return rows
+  const rows: (string | number)[][] = []
+  const merges: XLSX.Range[] = []
+
+  const sortedSchools = Array.from(schoolMap.keys()).sort((a, b) => a.localeCompare(b))
+
+  if (sortedSchools.length === 0) {
+    rows.push(['No deployment records found for this level.'])
+    return XLSX.utils.aoa_to_sheet(rows)
+  }
+
+  sortedSchools.forEach((schoolName, schoolIdx) => {
+    const entries = schoolMap.get(schoolName) || []
+    if (entries.length === 0) return
+
+    // 1. School Title Banner Row
+    const titleRowIdx = rows.length
+    const titleRow: string[] = [schoolName, ...Array(colCount - 1).fill('')]
+    rows.push(titleRow)
+    merges.push({
+      s: { r: titleRowIdx, c: 0 },
+      e: { r: titleRowIdx, c: colCount - 1 },
+    })
+
+    // 2. Table Header Row 1 & Row 2 (matching DeploymentTab UI)
+    const headRow1Idx = rows.length
+    const headRow2Idx = rows.length + 1
+
+    if (isSubjectLevel) {
+      rows.push([
+        'NO.',
+        'NAME OF APPLICANT',
+        '',
+        '',
+        'SCHOOL',
+        'SUBJECT',
+        'CURRENT POSITION',
+        'DATE ADDED',
+        'TRANSFER',
+      ])
+      rows.push(['', 'LAST NAME', 'FIRST NAME', 'MIDDLE NAME', '', '', '', '', ''])
+
+      merges.push(
+        { s: { r: headRow1Idx, c: 0 }, e: { r: headRow2Idx, c: 0 } }, // NO.
+        { s: { r: headRow1Idx, c: 1 }, e: { r: headRow1Idx, c: 3 } }, // NAME OF APPLICANT
+        { s: { r: headRow1Idx, c: 4 }, e: { r: headRow2Idx, c: 4 } }, // SCHOOL
+        { s: { r: headRow1Idx, c: 5 }, e: { r: headRow2Idx, c: 5 } }, // SUBJECT
+        { s: { r: headRow1Idx, c: 6 }, e: { r: headRow2Idx, c: 6 } }, // CURRENT POSITION
+        { s: { r: headRow1Idx, c: 7 }, e: { r: headRow2Idx, c: 7 } }, // DATE ADDED
+        { s: { r: headRow1Idx, c: 8 }, e: { r: headRow2Idx, c: 8 } } // TRANSFER
+      )
+    } else {
+      rows.push([
+        'NO.',
+        'NAME OF APPLICANT',
+        '',
+        '',
+        'SCHOOL',
+        'CURRENT POSITION',
+        'DATE ADDED',
+        'TRANSFER',
+      ])
+      rows.push(['', 'LAST NAME', 'FIRST NAME', 'MIDDLE NAME', '', '', '', ''])
+
+      merges.push(
+        { s: { r: headRow1Idx, c: 0 }, e: { r: headRow2Idx, c: 0 } }, // NO.
+        { s: { r: headRow1Idx, c: 1 }, e: { r: headRow1Idx, c: 3 } }, // NAME OF APPLICANT
+        { s: { r: headRow1Idx, c: 4 }, e: { r: headRow2Idx, c: 4 } }, // SCHOOL
+        { s: { r: headRow1Idx, c: 5 }, e: { r: headRow2Idx, c: 5 } }, // CURRENT POSITION
+        { s: { r: headRow1Idx, c: 6 }, e: { r: headRow2Idx, c: 6 } }, // DATE ADDED
+        { s: { r: headRow1Idx, c: 7 }, e: { r: headRow2Idx, c: 7 } } // TRANSFER
+      )
+    }
+
+    // 3. Data rows for this school
+    entries.forEach((e, idx) => {
+      if (isSubjectLevel) {
+        rows.push([
+          idx + 1,
+          e.lastName,
+          e.firstName,
+          e.middleName,
+          e.schoolDisplay,
+          e.subject,
+          e.currentPosition,
+          e.dateAdded,
+          e.transferLabel,
+        ])
+      } else {
+        rows.push([
+          idx + 1,
+          e.lastName,
+          e.firstName,
+          e.middleName,
+          e.schoolDisplay,
+          e.currentPosition,
+          e.dateAdded,
+          e.transferLabel,
+        ])
+      }
+    })
+
+    // 4. Blank separator row between schools
+    if (schoolIdx < sortedSchools.length - 1) {
+      rows.push([])
+    }
+  })
+
+  const ws = XLSX.utils.aoa_to_sheet(rows)
+  ws['!merges'] = merges
+  ws['!cols'] = isSubjectLevel
+    ? [
+        { wch: 6 },
+        { wch: 18 },
+        { wch: 18 },
+        { wch: 16 },
+        { wch: 28 },
+        { wch: 14 },
+        { wch: 20 },
+        { wch: 14 },
+        { wch: 24 },
+      ]
+    : [
+        { wch: 6 },
+        { wch: 18 },
+        { wch: 18 },
+        { wch: 16 },
+        { wch: 28 },
+        { wch: 20 },
+        { wch: 14 },
+        { wch: 24 },
+      ]
+
+  return ws
 }
 
 /**
@@ -305,7 +474,7 @@ export function exportCategoryBackupExcel(category: CategoryType) {
     XLSX.utils.book_append_sheet(wb, wsAnalysis, `${category}_Needs_Backup`)
   }
 
-  const wsDeploy = XLSX.utils.aoa_to_sheet(buildDeploymentSheetRows(category))
+  const wsDeploy = buildDeploymentWorksheet(category)
   XLSX.utils.book_append_sheet(wb, wsDeploy, `${category}_Deployments_Backup`)
 
   XLSX.writeFile(wb, `DepEd_${category}_Backup_${getDateStamp()}.xlsx`)
@@ -316,7 +485,7 @@ export function exportCategoryBackupExcel(category: CategoryType) {
  */
 export function exportDeploymentsExcel(category: CategoryType) {
   const wb = XLSX.utils.book_new()
-  const wsDeploy = XLSX.utils.aoa_to_sheet(buildDeploymentSheetRows(category))
+  const wsDeploy = buildDeploymentWorksheet(category)
   XLSX.utils.book_append_sheet(wb, wsDeploy, `${category}_Deployments`)
   XLSX.writeFile(wb, `DepEd_${category}_Deployments_${getDateStamp()}.xlsx`)
 }

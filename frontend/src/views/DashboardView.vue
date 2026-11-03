@@ -963,8 +963,12 @@ const recentDeployments = computed(() =>
   color: #1e293b;
 }
 
-.dash-table tbody tr:hover {
-  background: #f8fafc;
+.dash-table tbody tr:hover td {
+  background: #dbeafe;
+}
+
+.dash-table tbody tr:hover td:first-child {
+  box-shadow: inset 4px 0 0 #3b82f6;
 }
 
 .rank-cell {
@@ -1016,29 +1020,10 @@ const recentDeployments = computed(() =>
   color: #5b21b6;
 }
 
-.badge {
-  display: inline-block;
-  padding: 0.18rem 0.55rem;
-  border-radius: 999px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  white-space: nowrap;
-}
-.badge-danger {
-  background: #fee2e2;
-  color: #b91c1c;
-}
-.badge-surplus {
-  background: #e0f2fe;
-  color: #0369a1;
-}
-.badge-success {
-  background: #dcfce7;
-  color: #15803d;
-}
 .badge-out {
-  background: #ffedd5;
-  color: #c2410c;
+  background: #ea580c !important;
+  color: #ffffff !important;
+  border: 1.5px solid #9a3412 !important;
 }
 
 .route-from {

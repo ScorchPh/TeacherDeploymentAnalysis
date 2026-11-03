@@ -98,7 +98,7 @@ const currentDesc = computed(() => {
             <div class="staff-role">DepEd Division Office</div>
           </div>
         </div>
-        <div class="app-version">Version 1.0.0 • Desktop Staff Client</div>
+        <div class="app-version">Version 1.4.0 • Desktop Staff Client</div>
       </div>
     </aside>
 

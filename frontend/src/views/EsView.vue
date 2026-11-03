@@ -295,7 +295,13 @@ function resetToDefault() {
               <!-- GAP: Required - Existing -->
               <td
                 class="col-num font-semibold"
-                :class="tnaStore.calcEsGap(record) > 0 ? 'text-red' : tnaStore.calcEsGap(record) < 0 ? 'text-blue' : 'text-muted'"
+                :class="
+                  tnaStore.calcEsGap(record) > 0
+                    ? 'ind-needs'
+                    : tnaStore.calcEsGap(record) < 0
+                    ? 'ind-excess'
+                    : 'ind-balanced'
+                "
               >
                 {{ tnaStore.calcEsGap(record) > 0 ? `+${tnaStore.calcEsGap(record)}` : tnaStore.calcEsGap(record) }}
               </td>
@@ -781,20 +787,28 @@ input:disabled {
   cursor: pointer;
 }
 
-.analysis-table tbody tr:hover td,
+.analysis-table tbody tr:hover td:not(.ind-needs):not(.ind-excess):not(.ind-balanced),
 .analysis-table tbody tr:hover td:first-child,
 .analysis-table tbody tr:hover td.school-name-cell {
-  background-color: #eff6ff !important;
-}
-
-.analysis-table tbody tr.row-selected td,
-.analysis-table tbody tr.row-selected td:first-child,
-.analysis-table tbody tr.row-selected td.school-name-cell {
   background-color: #dbeafe !important;
 }
 
+.analysis-table tbody tr:hover td:first-child {
+  box-shadow: inset 4px 0 0 #3b82f6;
+}
+
+.analysis-table tbody tr:hover td.school-name-cell {
+  color: #1e3a8a;
+}
+
+.analysis-table tbody tr.row-selected td:not(.ind-needs):not(.ind-excess):not(.ind-balanced),
+.analysis-table tbody tr.row-selected td:first-child,
+.analysis-table tbody tr.row-selected td.school-name-cell {
+  background-color: #bfdbfe !important;
+}
+
 .analysis-table tbody tr.row-selected td:first-child {
-  box-shadow: inset 4px 0 0 #2563eb;
+  box-shadow: inset 5px 0 0 #1d4ed8;
 }
 
 .analysis-table tbody tr.row-selected td.school-name-cell {
