@@ -16,6 +16,11 @@ const statusFilter = ref<'ALL' | 'NEEDS' | 'SURPLUS'>('ALL')
 const isImportModalOpen = ref(false)
 const isAddModalOpen = ref(false)
 const editingRecordId = ref<string | null>(null)
+const selectedRowId = ref<string | null>(null)
+
+function toggleSelectRow(id: string) {
+  selectedRowId.value = selectedRowId.value === id ? null : id
+}
 
 // Form state for adding/editing
 const formState = ref({
@@ -269,7 +274,12 @@ function resetToDefault() {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="record in filteredRecords" :key="record.id">
+            <tr
+              v-for="record in filteredRecords"
+              :key="record.id"
+              :class="{ 'row-selected': selectedRowId === record.id }"
+              @click="toggleSelectRow(record.id)"
+            >
               <td class="font-mono">{{ record.schoolId || '—' }}</td>
               <td class="font-bold school-name-cell">
                 {{ record.schoolName }}
@@ -732,10 +742,63 @@ input:disabled {
   padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--color-border);
   vertical-align: middle;
+  transition: background-color 0.12s ease;
 }
 
-.analysis-table tbody tr:hover {
-  background-color: #f8fafc;
+.analysis-table th.col-id,
+.analysis-table tbody td:first-child {
+  position: sticky;
+  left: 0;
+  width: 95px;
+  min-width: 95px;
+  max-width: 95px;
+}
+
+.analysis-table th.col-name,
+.analysis-table tbody td.school-name-cell {
+  position: sticky;
+  left: 95px;
+  width: 175px;
+  min-width: 175px;
+  max-width: 175px;
+  border-right: 2px solid #cbd5e1;
+  box-shadow: 3px 0 6px -2px rgba(15, 23, 42, 0.08);
+}
+
+.analysis-table th.col-id,
+.analysis-table th.col-name {
+  z-index: 8;
+  background: #f8fafc;
+}
+
+.analysis-table tbody td:first-child,
+.analysis-table tbody td.school-name-cell {
+  z-index: 3;
+  background: #ffffff;
+}
+
+.analysis-table tbody tr {
+  cursor: pointer;
+}
+
+.analysis-table tbody tr:hover td,
+.analysis-table tbody tr:hover td:first-child,
+.analysis-table tbody tr:hover td.school-name-cell {
+  background-color: #eff6ff !important;
+}
+
+.analysis-table tbody tr.row-selected td,
+.analysis-table tbody tr.row-selected td:first-child,
+.analysis-table tbody tr.row-selected td.school-name-cell {
+  background-color: #dbeafe !important;
+}
+
+.analysis-table tbody tr.row-selected td:first-child {
+  box-shadow: inset 4px 0 0 #2563eb;
+}
+
+.analysis-table tbody tr.row-selected td.school-name-cell {
+  color: #1e3a8a;
 }
 
 .font-mono {

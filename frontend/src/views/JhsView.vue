@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { tnaStore } from '../stores/tnaStore'
-import { JHS_SUBJECTS, type JhsRecord, type JhsSubject } from '../types/tna'
+import { type JhsRecord, type JhsSubject } from '../types/tna'
 import ImportModal from '../components/ImportModal.vue'
 import DeploymentTab from '../components/DeploymentTab.vue'
+import ManageSubjectsModal from '../components/ManageSubjectsModal.vue'
 import { downloadTemplateFile, exportCategoryBackupExcel, type ParsedImportRow } from '../utils/excelTemplate'
+
+const JHS_SUBJECTS = computed(() => tnaStore.jhsSubjects)
 
 const activeTab = ref<'ANALYSIS' | 'DEPLOYMENT'>('ANALYSIS')
 const deploymentCount = computed(
@@ -16,17 +19,23 @@ const statusFilter = ref<'ALL' | 'NEEDS' | 'SURPLUS'>('ALL')
 const activeViewMode = ref<'TOTALS' | 'SUBJECT_FOCUS' | 'FULL_MATRIX'>('TOTALS')
 const selectedSubject = ref<JhsSubject>('Filipino')
 const isImportModalOpen = ref(false)
+const isSubjectsModalOpen = ref(false)
 const isAddModalOpen = ref(false)
 const editingRecordId = ref<string | null>(null)
+const selectedRowId = ref<string | null>(null)
+
+function toggleSelectRow(id: string) {
+  selectedRowId.value = selectedRowId.value === id ? null : id
+}
 
 // Form State
 function initForm() {
-  const req: Record<JhsSubject, number> = {} as any
-  const exist: Record<JhsSubject, number> = {} as any
-  const tout: Record<JhsSubject, number> = {} as any
-  const tin: Record<JhsSubject, number> = {} as any
+  const req: Record<JhsSubject, number> = {}
+  const exist: Record<JhsSubject, number> = {}
+  const tout: Record<JhsSubject, number> = {}
+  const tin: Record<JhsSubject, number> = {}
 
-  JHS_SUBJECTS.forEach((s) => {
+  tnaStore.jhsSubjects.forEach((s) => {
     req[s] = 0
     exist[s] = 0
     tout[s] = 0
@@ -90,13 +99,20 @@ function openAddModal() {
 
 function openEditModal(record: JhsRecord) {
   editingRecordId.value = record.id
+  const base = initForm()
+  tnaStore.jhsSubjects.forEach((s) => {
+    base.required[s] = record.required[s] ?? 0
+    base.existing[s] = record.existing[s] ?? 0
+    base.transferOut[s] = record.transferOut[s] ?? 0
+    base.transferIn[s] = record.transferIn[s] ?? 0
+  })
   formState.value = {
     schoolId: record.schoolId,
     schoolName: record.schoolName,
-    required: { ...record.required },
-    existing: { ...record.existing },
-    transferOut: { ...record.transferOut },
-    transferIn: { ...record.transferIn },
+    required: base.required,
+    existing: base.existing,
+    transferOut: base.transferOut,
+    transferIn: base.transferIn,
   }
   isAddModalOpen.value = true
 }
@@ -134,36 +150,38 @@ function deleteRecord(id: string, name: string) {
 
 function handleImport(importedData: ParsedImportRow[]) {
   importedData.forEach((row) => {
-    const existingIdx = tnaStore.jhsRecords.findIndex(
-      (r) =>
-        (row.schoolId && r.schoolId === String(row.schoolId)) ||
-        (row.schoolName &&
-          r.schoolName.toLowerCase() === String(row.schoolName).toLowerCase())
-    )
+    const rowName = String(row.schoolName || '').trim().toLowerCase()
+    const rowId = String(row.schoolId || '').trim()
+    const existingIdx = tnaStore.jhsRecords.findIndex((r) => {
+      if (rowName) return r.schoolName.trim().toLowerCase() === rowName
+      return rowId !== '' && r.schoolId.trim() === rowId
+    })
 
     if (existingIdx !== -1 && tnaStore.jhsRecords[existingIdx]) {
       const cur = tnaStore.jhsRecords[existingIdx]!
-      if (row.schoolId) cur.schoolId = String(row.schoolId)
+      if (rowId) cur.schoolId = rowId
       if (row.requiredBySubject && row.existingBySubject) {
-        JHS_SUBJECTS.forEach((s) => {
-          cur.required[s] = Number(row.requiredBySubject![s]) || 0
-          cur.existing[s] = Number(row.existingBySubject![s]) || 0
+        tnaStore.jhsSubjects.forEach((s) => {
+          cur.required[s] = Math.round(Number(row.requiredBySubject![s]) || 0)
+          cur.existing[s] = Math.round(Number(row.existingBySubject![s]) || 0)
         })
       } else if (row.required !== undefined) {
-        cur.required['Filipino'] = Number(row.required) || cur.required['Filipino']
+        const firstSubj = tnaStore.jhsSubjects[0] || 'Filipino'
+        cur.required[firstSubj] = Math.round(Number(row.required) || 0) || (cur.required[firstSubj] ?? 0)
       }
-    } else if (row.schoolName || row.schoolId) {
+    } else if (rowName || rowId) {
       const fresh = initForm()
-      fresh.schoolId = String(row.schoolId || '')
-      fresh.schoolName = String(row.schoolName || 'Unnamed JHS')
+      fresh.schoolId = rowId
+      fresh.schoolName = String(row.schoolName || 'Unnamed JHS').trim()
       if (row.requiredBySubject && row.existingBySubject) {
-        JHS_SUBJECTS.forEach((s) => {
-          fresh.required[s] = Number(row.requiredBySubject![s]) || 0
-          fresh.existing[s] = Number(row.existingBySubject![s]) || 0
+        tnaStore.jhsSubjects.forEach((s) => {
+          fresh.required[s] = Math.round(Number(row.requiredBySubject![s]) || 0)
+          fresh.existing[s] = Math.round(Number(row.existingBySubject![s]) || 0)
         })
       } else {
-        fresh.required['Filipino'] = Number(row.required) || 0
-        fresh.existing['Filipino'] = Number(row.existing) || 0
+        const firstSubj = tnaStore.jhsSubjects[0] || 'Filipino'
+        fresh.required[firstSubj] = Math.round(Number(row.required) || 0)
+        fresh.existing[firstSubj] = Math.round(Number(row.existing) || 0)
       }
       tnaStore.addJhsRecord(fresh)
     }
@@ -316,6 +334,9 @@ function resetToDefault() {
       </div>
 
       <div class="toolbar-right">
+        <button class="btn btn-secondary" title="Add or remove JHS subjects" @click="isSubjectsModalOpen = true">
+          ⚙️ Subjects
+        </button>
         <button class="btn btn-secondary" title="Download Excel backup of JHS data & deployments" @click="exportCategoryBackupExcel('JHS')">
           💾 Export Backup
         </button>
@@ -354,7 +375,12 @@ function resetToDefault() {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="record in filteredRecords" :key="record.id">
+            <tr
+              v-for="record in filteredRecords"
+              :key="record.id"
+              :class="{ 'row-selected': selectedRowId === record.id }"
+              @click="toggleSelectRow(record.id)"
+            >
               <td class="font-mono">{{ record.schoolId || '—' }}</td>
               <td class="font-bold school-name-cell">{{ record.schoolName }}</td>
               <td class="col-num req-cell font-semibold">
@@ -438,29 +464,73 @@ function resetToDefault() {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="record in filteredRecords" :key="record.id">
+            <tr
+              v-for="record in filteredRecords"
+              :key="record.id"
+              :class="{ 'row-selected': selectedRowId === record.id }"
+              @click="toggleSelectRow(record.id)"
+            >
               <td class="font-mono">{{ record.schoolId || '—' }}</td>
               <td class="font-bold school-name-cell">{{ record.schoolName }}</td>
               <td class="col-num req-cell font-semibold">{{ record.required[selectedSubject] || 0 }}</td>
               <td class="col-num exist-cell">{{ record.existing[selectedSubject] || 0 }}</td>
               <td
                 class="col-num font-semibold"
-                :class="tnaStore.calcJhsSubjectGap(record, selectedSubject) > 0 ? 'text-red' : 'text-green'"
+                :class="
+                  tnaStore.calcJhsSubjectGap(record, selectedSubject) > 0
+                    ? 'ind-needs'
+                    : tnaStore.calcJhsSubjectGap(record, selectedSubject) < 0
+                    ? 'ind-excess'
+                    : 'ind-balanced'
+                "
               >
-                {{ tnaStore.calcJhsSubjectGap(record, selectedSubject) }}
+                {{
+                  tnaStore.calcJhsSubjectGap(record, selectedSubject) > 0
+                    ? `+${tnaStore.calcJhsSubjectGap(record, selectedSubject)}`
+                    : tnaStore.calcJhsSubjectGap(record, selectedSubject)
+                }}
               </td>
               <td class="col-num tout-cell">{{ record.transferOut[selectedSubject] || 0 }}</td>
               <td class="col-num tin-cell">{{ record.transferIn[selectedSubject] || 0 }}</td>
               <td class="col-num needs-cell">
                 <span
                   class="badge"
-                  :class="tnaStore.calcJhsSubjectNeeds(record, selectedSubject) > 0 ? 'badge-danger' : 'badge-success'"
+                  :class="
+                    tnaStore.calcJhsSubjectNeeds(record, selectedSubject) > 0
+                      ? 'badge-danger'
+                      : tnaStore.calcJhsSubjectNeeds(record, selectedSubject) < 0
+                      ? 'badge-surplus'
+                      : 'badge-success'
+                  "
                 >
-                  {{ tnaStore.calcJhsSubjectNeeds(record, selectedSubject) }}
+                  {{
+                    tnaStore.calcJhsSubjectNeeds(record, selectedSubject) > 0
+                      ? `+${tnaStore.calcJhsSubjectNeeds(record, selectedSubject)} Needs`
+                      : tnaStore.calcJhsSubjectNeeds(record, selectedSubject) < 0
+                      ? `${tnaStore.calcJhsSubjectNeeds(record, selectedSubject)} Excess`
+                      : '0 Balanced'
+                  }}
                 </span>
               </td>
-              <td class="col-num font-bold" :class="tnaStore.calcJhsTotalNeeds(record) > 0 ? 'text-red' : 'text-green'">
-                {{ tnaStore.calcJhsTotalNeeds(record) > 0 ? `+${tnaStore.calcJhsTotalNeeds(record)}` : tnaStore.calcJhsTotalNeeds(record) }}
+              <td class="col-num font-bold">
+                <span
+                  class="badge"
+                  :class="
+                    tnaStore.calcJhsTotalNeeds(record) > 0
+                      ? 'badge-danger'
+                      : tnaStore.calcJhsTotalNeeds(record) < 0
+                      ? 'badge-surplus'
+                      : 'badge-success'
+                  "
+                >
+                  {{
+                    tnaStore.calcJhsTotalNeeds(record) > 0
+                      ? `+${tnaStore.calcJhsTotalNeeds(record)} Needs`
+                      : tnaStore.calcJhsTotalNeeds(record) < 0
+                      ? `${tnaStore.calcJhsTotalNeeds(record)} Excess`
+                      : '0 Balanced'
+                  }}
+                </span>
               </td>
               <td class="col-actions">
                 <div class="actions-wrap">
@@ -477,9 +547,9 @@ function resetToDefault() {
           <thead>
             <!-- Level 1: Category Groups -->
             <tr class="header-group-row">
-              <th colspan="2" class="group-header">School Info</th>
-              <th :colspan="JHS_SUBJECTS.length + 1" class="group-header group-req">Teacher Requirements (1:40 Ratio)</th>
-              <th :colspan="JHS_SUBJECTS.length + 1" class="group-header group-exist">Existing Teachers</th>
+              <th colspan="2" class="group-header sticky-group-info">School Info</th>
+              <th :colspan="JHS_SUBJECTS.length + 1" class="group-header group-req">Required Teachers Per Subject</th>
+              <th :colspan="JHS_SUBJECTS.length + 1" class="group-header group-exist">Existing Teachers Per Subject</th>
               <th :colspan="JHS_SUBJECTS.length + 1" class="group-header group-gap">GAP (Req - Exist)</th>
               <th :colspan="JHS_SUBJECTS.length + 1" class="group-header group-tout">Transfers Out</th>
               <th :colspan="JHS_SUBJECTS.length + 1" class="group-header group-tin">Transfers In</th>
@@ -519,7 +589,12 @@ function resetToDefault() {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="record in filteredRecords" :key="record.id">
+            <tr
+              v-for="record in filteredRecords"
+              :key="record.id"
+              :class="{ 'row-selected': selectedRowId === record.id }"
+              @click="toggleSelectRow(record.id)"
+            >
               <td class="font-mono">{{ record.schoolId }}</td>
               <td class="font-bold school-name-cell">{{ record.schoolName }}</td>
 
@@ -536,11 +611,27 @@ function resetToDefault() {
                 v-for="s in JHS_SUBJECTS"
                 :key="`gap-val-${s}`"
                 class="col-num font-semibold"
-                :class="tnaStore.calcJhsSubjectGap(record, s) > 0 ? 'text-red' : 'text-blue'"
+                :class="
+                  tnaStore.calcJhsSubjectGap(record, s) > 0
+                    ? 'ind-needs'
+                    : tnaStore.calcJhsSubjectGap(record, s) < 0
+                    ? 'ind-excess'
+                    : 'ind-balanced'
+                "
               >
-                {{ tnaStore.calcJhsSubjectGap(record, s) }}
+                {{
+                  tnaStore.calcJhsSubjectGap(record, s) > 0
+                    ? `+${tnaStore.calcJhsSubjectGap(record, s)}`
+                    : tnaStore.calcJhsSubjectGap(record, s)
+                }}
               </td>
-              <td class="col-num font-bold sub-total-val">{{ tnaStore.calcJhsTotalGap(record) }}</td>
+              <td class="col-num font-bold sub-total-val">
+                {{
+                  tnaStore.calcJhsTotalGap(record) > 0
+                    ? `+${tnaStore.calcJhsTotalGap(record)}`
+                    : tnaStore.calcJhsTotalGap(record)
+                }}
+              </td>
 
               <!-- Transfer Out Values -->
               <td v-for="s in JHS_SUBJECTS" :key="`tout-val-${s}`" class="col-num tout-cell">{{ record.transferOut[s] || 0 }}</td>
@@ -555,15 +646,39 @@ function resetToDefault() {
                 v-for="s in JHS_SUBJECTS"
                 :key="`needs-val-${s}`"
                 class="col-num font-bold"
-                :class="tnaStore.calcJhsSubjectNeeds(record, s) > 0 ? 'text-red' : 'text-green'"
+                :class="
+                  tnaStore.calcJhsSubjectNeeds(record, s) > 0
+                    ? 'ind-needs'
+                    : tnaStore.calcJhsSubjectNeeds(record, s) < 0
+                    ? 'ind-excess'
+                    : 'ind-balanced'
+                "
               >
-                {{ tnaStore.calcJhsSubjectNeeds(record, s) }}
+                {{
+                  tnaStore.calcJhsSubjectNeeds(record, s) > 0
+                    ? `+${tnaStore.calcJhsSubjectNeeds(record, s)}`
+                    : tnaStore.calcJhsSubjectNeeds(record, s)
+                }}
               </td>
-              <td
-                class="col-num font-bold sub-total-val"
-                :class="tnaStore.calcJhsTotalNeeds(record) > 0 ? 'text-red' : 'text-green'"
-              >
-                {{ tnaStore.calcJhsTotalNeeds(record) }}
+              <td class="col-num font-bold sub-total-val">
+                <span
+                  class="badge"
+                  :class="
+                    tnaStore.calcJhsTotalNeeds(record) > 0
+                      ? 'badge-danger'
+                      : tnaStore.calcJhsTotalNeeds(record) < 0
+                      ? 'badge-surplus'
+                      : 'badge-success'
+                  "
+                >
+                  {{
+                    tnaStore.calcJhsTotalNeeds(record) > 0
+                      ? `+${tnaStore.calcJhsTotalNeeds(record)} Needs`
+                      : tnaStore.calcJhsTotalNeeds(record) < 0
+                      ? `${tnaStore.calcJhsTotalNeeds(record)} Excess`
+                      : '0 Balanced'
+                  }}
+                </span>
               </td>
 
               <td class="col-actions">
@@ -585,6 +700,13 @@ function resetToDefault() {
       category="JHS"
       @close="isImportModalOpen = false"
       @import="handleImport"
+    />
+
+    <!-- Manage Subjects Modal -->
+    <ManageSubjectsModal
+      :is-open="isSubjectsModalOpen"
+      category="JHS"
+      @close="isSubjectsModalOpen = false"
     />
 
     <!-- Add/Edit Modal with Subject Inputs -->
@@ -632,11 +754,11 @@ function resetToDefault() {
                   <td><input v-model.number="formState.existing[subj]" type="number" min="0" class="mini-input" /></td>
                   <td><input v-model.number="formState.transferOut[subj]" type="number" min="0" class="mini-input" disabled title="Managed in the Deployment tab" /></td>
                   <td><input v-model.number="formState.transferIn[subj]" type="number" min="0" class="mini-input" disabled title="Managed in the Deployment tab" /></td>
-                  <td class="col-num font-semibold" :class="(formState.required[subj] - formState.existing[subj]) > 0 ? 'text-red' : 'text-green'">
-                    {{ formState.required[subj] - formState.existing[subj] }}
+                  <td class="col-num font-semibold" :class="((formState.required[subj] ?? 0) - (formState.existing[subj] ?? 0)) > 0 ? 'text-red' : 'text-green'">
+                    {{ (formState.required[subj] ?? 0) - (formState.existing[subj] ?? 0) }}
                   </td>
-                  <td class="col-num font-bold" :class="((formState.required[subj] - formState.existing[subj]) + formState.transferOut[subj] - formState.transferIn[subj]) > 0 ? 'text-red' : 'text-green'">
-                    {{ (formState.required[subj] - formState.existing[subj]) + formState.transferOut[subj] - formState.transferIn[subj] }}
+                  <td class="col-num font-bold" :class="(((formState.required[subj] ?? 0) - (formState.existing[subj] ?? 0)) + (formState.transferOut[subj] ?? 0) - (formState.transferIn[subj] ?? 0)) > 0 ? 'text-red' : 'text-green'">
+                    {{ ((formState.required[subj] ?? 0) - (formState.existing[subj] ?? 0)) + (formState.transferOut[subj] ?? 0) - (formState.transferIn[subj] ?? 0) }}
                   </td>
                 </tr>
               </tbody>
@@ -927,7 +1049,14 @@ input:disabled {
 
 .table-responsive {
   overflow-x: auto;
+  overflow-y: auto;
   max-height: calc(100vh - 280px);
+}
+
+.analysis-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 5;
 }
 
 .analysis-table {
@@ -963,6 +1092,74 @@ input:disabled {
   padding: 0.7rem 0.85rem;
   border-bottom: 1px solid var(--color-border);
   vertical-align: middle;
+  transition: background-color 0.12s ease;
+}
+
+/* Sticky Frozen Left Columns (School ID & School Name) */
+.analysis-table th.col-id,
+.analysis-table tbody td:first-child {
+  position: sticky;
+  left: 0;
+  width: 95px;
+  min-width: 95px;
+  max-width: 95px;
+}
+
+.analysis-table th.col-name,
+.analysis-table tbody td.school-name-cell {
+  position: sticky;
+  left: 95px;
+  width: 175px;
+  min-width: 175px;
+  max-width: 175px;
+  border-right: 2px solid #cbd5e1;
+  box-shadow: 3px 0 6px -2px rgba(15, 23, 42, 0.08);
+}
+
+.analysis-table th.col-id,
+.analysis-table th.col-name {
+  z-index: 8;
+  background: #f8fafc;
+}
+
+.sticky-group-info {
+  position: sticky;
+  left: 0;
+  z-index: 9;
+  background: #f8fafc !important;
+  border-right: 2px solid #cbd5e1 !important;
+  box-shadow: 3px 0 6px -2px rgba(15, 23, 42, 0.08);
+}
+
+.analysis-table tbody td:first-child,
+.analysis-table tbody td.school-name-cell {
+  z-index: 3;
+  background: #ffffff;
+}
+
+/* Row Hover & Click Selection Highlight */
+.analysis-table tbody tr {
+  cursor: pointer;
+}
+
+.analysis-table tbody tr:hover td,
+.analysis-table tbody tr:hover td:first-child,
+.analysis-table tbody tr:hover td.school-name-cell {
+  background-color: #eff6ff !important;
+}
+
+.analysis-table tbody tr.row-selected td,
+.analysis-table tbody tr.row-selected td:first-child,
+.analysis-table tbody tr.row-selected td.school-name-cell {
+  background-color: #dbeafe !important;
+}
+
+.analysis-table tbody tr.row-selected td:first-child {
+  box-shadow: inset 4px 0 0 #2563eb;
+}
+
+.analysis-table tbody tr.row-selected td.school-name-cell {
+  color: #1e3a8a;
 }
 
 .font-mono {

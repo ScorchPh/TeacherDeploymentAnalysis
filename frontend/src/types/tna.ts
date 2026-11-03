@@ -8,18 +8,9 @@ export interface EsRecord {
   transferIn: number
 }
 
-export type JhsSubject =
-  | 'Filipino'
-  | 'English'
-  | 'Math'
-  | 'Science'
-  | 'AralPan'
-  | 'TLE'
-  | 'MAPEH'
-  | 'EsP'
-  | 'SPED'
+export type JhsSubject = string
 
-export const JHS_SUBJECTS: JhsSubject[] = [
+export const JHS_SUBJECTS: string[] = [
   'Filipino',
   'English',
   'Math',
@@ -35,29 +26,20 @@ export interface JhsRecord {
   id: string
   schoolId: string
   schoolName: string
-  required: Record<JhsSubject, number>
-  existing: Record<JhsSubject, number>
-  transferOut: Record<JhsSubject, number>
-  transferIn: Record<JhsSubject, number>
+  required: Record<string, number>
+  existing: Record<string, number>
+  transferOut: Record<string, number>
+  transferIn: Record<string, number>
 }
 
-export type ShsSubject =
-  | 'ABM'
-  | 'AralPan'
-  | 'English'
-  | 'Filipino'
-  | 'Math'
-  | 'Science'
-  | 'TVL-AFA'
-  | 'TVL-HE'
-  | 'TVL-IA'
-  | 'TVL-ICT'
+export type ShsSubject = string
 
-export const SHS_SUBJECTS: ShsSubject[] = [
+export const SHS_SUBJECTS: string[] = [
   'ABM',
   'AralPan',
   'English',
   'Filipino',
+  'MAPEH',
   'Math',
   'Science',
   'TVL-AFA',
@@ -70,10 +52,10 @@ export interface ShsRecord {
   id: string
   schoolId: string
   schoolName: string
-  required: Record<ShsSubject, number>
-  existing: Record<ShsSubject, number>
-  transferOut: Record<ShsSubject, number>
-  transferIn: Record<ShsSubject, number>
+  required: Record<string, number>
+  existing: Record<string, number>
+  transferOut: Record<string, number>
+  transferIn: Record<string, number>
 }
 
 export type CategoryType = 'ES' | 'JHS' | 'SHS'

@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { tnaStore } from '../stores/tnaStore'
-import { SHS_SUBJECTS, type ShsRecord, type ShsSubject } from '../types/tna'
+import { type ShsRecord, type ShsSubject } from '../types/tna'
 import ImportModal from '../components/ImportModal.vue'
 import DeploymentTab from '../components/DeploymentTab.vue'
+import ManageSubjectsModal from '../components/ManageSubjectsModal.vue'
 import { downloadTemplateFile, exportCategoryBackupExcel, type ParsedImportRow } from '../utils/excelTemplate'
+
+const SHS_SUBJECTS = computed(() => tnaStore.shsSubjects)
 
 const activeTab = ref<'ANALYSIS' | 'DEPLOYMENT'>('ANALYSIS')
 const deploymentCount = computed(
@@ -16,17 +19,23 @@ const statusFilter = ref<'ALL' | 'NEEDS' | 'SURPLUS'>('ALL')
 const activeViewMode = ref<'TOTALS' | 'SUBJECT_FOCUS' | 'FULL_MATRIX'>('TOTALS')
 const selectedSubject = ref<ShsSubject>('ABM')
 const isImportModalOpen = ref(false)
+const isSubjectsModalOpen = ref(false)
 const isAddModalOpen = ref(false)
 const editingRecordId = ref<string | null>(null)
+const selectedRowId = ref<string | null>(null)
+
+function toggleSelectRow(id: string) {
+  selectedRowId.value = selectedRowId.value === id ? null : id
+}
 
 // Form State
 function initForm() {
-  const req: Record<ShsSubject, number> = {} as any
-  const exist: Record<ShsSubject, number> = {} as any
-  const tout: Record<ShsSubject, number> = {} as any
-  const tin: Record<ShsSubject, number> = {} as any
+  const req: Record<ShsSubject, number> = {}
+  const exist: Record<ShsSubject, number> = {}
+  const tout: Record<ShsSubject, number> = {}
+  const tin: Record<ShsSubject, number> = {}
 
-  SHS_SUBJECTS.forEach((s) => {
+  tnaStore.shsSubjects.forEach((s) => {
     req[s] = 0
     exist[s] = 0
     tout[s] = 0
@@ -90,13 +99,20 @@ function openAddModal() {
 
 function openEditModal(record: ShsRecord) {
   editingRecordId.value = record.id
+  const base = initForm()
+  tnaStore.shsSubjects.forEach((s) => {
+    base.required[s] = record.required[s] ?? 0
+    base.existing[s] = record.existing[s] ?? 0
+    base.transferOut[s] = record.transferOut[s] ?? 0
+    base.transferIn[s] = record.transferIn[s] ?? 0
+  })
   formState.value = {
     schoolId: record.schoolId,
     schoolName: record.schoolName,
-    required: { ...record.required },
-    existing: { ...record.existing },
-    transferOut: { ...record.transferOut },
-    transferIn: { ...record.transferIn },
+    required: base.required,
+    existing: base.existing,
+    transferOut: base.transferOut,
+    transferIn: base.transferIn,
   }
   isAddModalOpen.value = true
 }
@@ -134,36 +150,38 @@ function deleteRecord(id: string, name: string) {
 
 function handleImport(importedData: ParsedImportRow[]) {
   importedData.forEach((row) => {
-    const existingIdx = tnaStore.shsRecords.findIndex(
-      (r) =>
-        (row.schoolId && r.schoolId === String(row.schoolId)) ||
-        (row.schoolName &&
-          r.schoolName.toLowerCase() === String(row.schoolName).toLowerCase())
-    )
+    const rowName = String(row.schoolName || '').trim().toLowerCase()
+    const rowId = String(row.schoolId || '').trim()
+    const existingIdx = tnaStore.shsRecords.findIndex((r) => {
+      if (rowName) return r.schoolName.trim().toLowerCase() === rowName
+      return rowId !== '' && r.schoolId.trim() === rowId
+    })
 
     if (existingIdx !== -1 && tnaStore.shsRecords[existingIdx]) {
       const cur = tnaStore.shsRecords[existingIdx]!
-      if (row.schoolId) cur.schoolId = String(row.schoolId)
+      if (rowId) cur.schoolId = rowId
       if (row.requiredBySubject && row.existingBySubject) {
-        SHS_SUBJECTS.forEach((s) => {
-          cur.required[s] = Number(row.requiredBySubject![s]) || 0
-          cur.existing[s] = Number(row.existingBySubject![s]) || 0
+        tnaStore.shsSubjects.forEach((s) => {
+          cur.required[s] = Math.round(Number(row.requiredBySubject![s]) || 0)
+          cur.existing[s] = Math.round(Number(row.existingBySubject![s]) || 0)
         })
       } else if (row.required !== undefined) {
-        cur.required['ABM'] = Number(row.required) || cur.required['ABM']
+        const firstSubj = tnaStore.shsSubjects[0] || 'ABM'
+        cur.required[firstSubj] = Math.round(Number(row.required) || 0) || (cur.required[firstSubj] ?? 0)
       }
-    } else if (row.schoolName || row.schoolId) {
+    } else if (rowName || rowId) {
       const fresh = initForm()
-      fresh.schoolId = String(row.schoolId || '')
-      fresh.schoolName = String(row.schoolName || 'Unnamed SHS')
+      fresh.schoolId = rowId
+      fresh.schoolName = String(row.schoolName || 'Unnamed SHS').trim()
       if (row.requiredBySubject && row.existingBySubject) {
-        SHS_SUBJECTS.forEach((s) => {
-          fresh.required[s] = Number(row.requiredBySubject![s]) || 0
-          fresh.existing[s] = Number(row.existingBySubject![s]) || 0
+        tnaStore.shsSubjects.forEach((s) => {
+          fresh.required[s] = Math.round(Number(row.requiredBySubject![s]) || 0)
+          fresh.existing[s] = Math.round(Number(row.existingBySubject![s]) || 0)
         })
       } else {
-        fresh.required['ABM'] = Number(row.required) || 0
-        fresh.existing['ABM'] = Number(row.existing) || 0
+        const firstSubj = tnaStore.shsSubjects[0] || 'ABM'
+        fresh.required[firstSubj] = Math.round(Number(row.required) || 0)
+        fresh.existing[firstSubj] = Math.round(Number(row.existing) || 0)
       }
       tnaStore.addShsRecord(fresh)
     }
@@ -316,6 +334,9 @@ function resetToDefault() {
       </div>
 
       <div class="toolbar-right">
+        <button class="btn btn-secondary" title="Add or remove SHS subjects/tracks" @click="isSubjectsModalOpen = true">
+          ⚙️ Subjects
+        </button>
         <button class="btn btn-secondary" title="Download Excel backup of SHS data & deployments" @click="exportCategoryBackupExcel('SHS')">
           💾 Export Backup
         </button>
@@ -354,7 +375,12 @@ function resetToDefault() {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="record in filteredRecords" :key="record.id">
+            <tr
+              v-for="record in filteredRecords"
+              :key="record.id"
+              :class="{ 'row-selected': selectedRowId === record.id }"
+              @click="toggleSelectRow(record.id)"
+            >
               <td class="font-mono">{{ record.schoolId || '—' }}</td>
               <td class="font-bold school-name-cell">{{ record.schoolName }}</td>
               <td class="col-num req-cell font-semibold">
@@ -438,29 +464,73 @@ function resetToDefault() {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="record in filteredRecords" :key="record.id">
+            <tr
+              v-for="record in filteredRecords"
+              :key="record.id"
+              :class="{ 'row-selected': selectedRowId === record.id }"
+              @click="toggleSelectRow(record.id)"
+            >
               <td class="font-mono">{{ record.schoolId || '—' }}</td>
               <td class="font-bold school-name-cell">{{ record.schoolName }}</td>
               <td class="col-num req-cell font-semibold">{{ record.required[selectedSubject] || 0 }}</td>
               <td class="col-num exist-cell">{{ record.existing[selectedSubject] || 0 }}</td>
               <td
                 class="col-num font-semibold"
-                :class="tnaStore.calcShsSubjectGap(record, selectedSubject) > 0 ? 'text-red' : 'text-green'"
+                :class="
+                  tnaStore.calcShsSubjectGap(record, selectedSubject) > 0
+                    ? 'ind-needs'
+                    : tnaStore.calcShsSubjectGap(record, selectedSubject) < 0
+                    ? 'ind-excess'
+                    : 'ind-balanced'
+                "
               >
-                {{ tnaStore.calcShsSubjectGap(record, selectedSubject) }}
+                {{
+                  tnaStore.calcShsSubjectGap(record, selectedSubject) > 0
+                    ? `+${tnaStore.calcShsSubjectGap(record, selectedSubject)}`
+                    : tnaStore.calcShsSubjectGap(record, selectedSubject)
+                }}
               </td>
               <td class="col-num tout-cell">{{ record.transferOut[selectedSubject] || 0 }}</td>
               <td class="col-num tin-cell">{{ record.transferIn[selectedSubject] || 0 }}</td>
               <td class="col-num needs-cell">
                 <span
                   class="badge"
-                  :class="tnaStore.calcShsSubjectNeeds(record, selectedSubject) > 0 ? 'badge-danger' : 'badge-success'"
+                  :class="
+                    tnaStore.calcShsSubjectNeeds(record, selectedSubject) > 0
+                      ? 'badge-danger'
+                      : tnaStore.calcShsSubjectNeeds(record, selectedSubject) < 0
+                      ? 'badge-surplus'
+                      : 'badge-success'
+                  "
                 >
-                  {{ tnaStore.calcShsSubjectNeeds(record, selectedSubject) }}
+                  {{
+                    tnaStore.calcShsSubjectNeeds(record, selectedSubject) > 0
+                      ? `+${tnaStore.calcShsSubjectNeeds(record, selectedSubject)} Needs`
+                      : tnaStore.calcShsSubjectNeeds(record, selectedSubject) < 0
+                      ? `${tnaStore.calcShsSubjectNeeds(record, selectedSubject)} Excess`
+                      : '0 Balanced'
+                  }}
                 </span>
               </td>
-              <td class="col-num font-bold" :class="tnaStore.calcShsTotalNeeds(record) > 0 ? 'text-red' : 'text-green'">
-                {{ tnaStore.calcShsTotalNeeds(record) > 0 ? `+${tnaStore.calcShsTotalNeeds(record)}` : tnaStore.calcShsTotalNeeds(record) }}
+              <td class="col-num font-bold">
+                <span
+                  class="badge"
+                  :class="
+                    tnaStore.calcShsTotalNeeds(record) > 0
+                      ? 'badge-danger'
+                      : tnaStore.calcShsTotalNeeds(record) < 0
+                      ? 'badge-surplus'
+                      : 'badge-success'
+                  "
+                >
+                  {{
+                    tnaStore.calcShsTotalNeeds(record) > 0
+                      ? `+${tnaStore.calcShsTotalNeeds(record)} Needs`
+                      : tnaStore.calcShsTotalNeeds(record) < 0
+                      ? `${tnaStore.calcShsTotalNeeds(record)} Excess`
+                      : '0 Balanced'
+                  }}
+                </span>
               </td>
               <td class="col-actions">
                 <div class="actions-wrap">
@@ -477,7 +547,7 @@ function resetToDefault() {
           <thead>
             <!-- Level 1: Category Groups -->
             <tr class="header-group-row">
-              <th colspan="2" class="group-header">School Info</th>
+              <th colspan="2" class="group-header sticky-group-info">School Info</th>
               <th :colspan="SHS_SUBJECTS.length + 1" class="group-header group-req">Required Teachers Per Subject / Track</th>
               <th :colspan="SHS_SUBJECTS.length + 1" class="group-header group-exist">Existing Teachers Per Subject / Track</th>
               <th :colspan="SHS_SUBJECTS.length + 1" class="group-header group-gap">GAP (Req - Exist)</th>
@@ -519,7 +589,12 @@ function resetToDefault() {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="record in filteredRecords" :key="record.id">
+            <tr
+              v-for="record in filteredRecords"
+              :key="record.id"
+              :class="{ 'row-selected': selectedRowId === record.id }"
+              @click="toggleSelectRow(record.id)"
+            >
               <td class="font-mono">{{ record.schoolId }}</td>
               <td class="font-bold school-name-cell">{{ record.schoolName }}</td>
 
@@ -536,11 +611,27 @@ function resetToDefault() {
                 v-for="s in SHS_SUBJECTS"
                 :key="`gap-val-${s}`"
                 class="col-num font-semibold"
-                :class="tnaStore.calcShsSubjectGap(record, s) > 0 ? 'text-red' : 'text-blue'"
+                :class="
+                  tnaStore.calcShsSubjectGap(record, s) > 0
+                    ? 'ind-needs'
+                    : tnaStore.calcShsSubjectGap(record, s) < 0
+                    ? 'ind-excess'
+                    : 'ind-balanced'
+                "
               >
-                {{ tnaStore.calcShsSubjectGap(record, s) }}
+                {{
+                  tnaStore.calcShsSubjectGap(record, s) > 0
+                    ? `+${tnaStore.calcShsSubjectGap(record, s)}`
+                    : tnaStore.calcShsSubjectGap(record, s)
+                }}
               </td>
-              <td class="col-num font-bold sub-total-val">{{ tnaStore.calcShsTotalGap(record) }}</td>
+              <td class="col-num font-bold sub-total-val">
+                {{
+                  tnaStore.calcShsTotalGap(record) > 0
+                    ? `+${tnaStore.calcShsTotalGap(record)}`
+                    : tnaStore.calcShsTotalGap(record)
+                }}
+              </td>
 
               <!-- Transfer Out Values -->
               <td v-for="s in SHS_SUBJECTS" :key="`tout-val-${s}`" class="col-num tout-cell">{{ record.transferOut[s] || 0 }}</td>
@@ -555,15 +646,39 @@ function resetToDefault() {
                 v-for="s in SHS_SUBJECTS"
                 :key="`needs-val-${s}`"
                 class="col-num font-bold"
-                :class="tnaStore.calcShsSubjectNeeds(record, s) > 0 ? 'text-red' : 'text-green'"
+                :class="
+                  tnaStore.calcShsSubjectNeeds(record, s) > 0
+                    ? 'ind-needs'
+                    : tnaStore.calcShsSubjectNeeds(record, s) < 0
+                    ? 'ind-excess'
+                    : 'ind-balanced'
+                "
               >
-                {{ tnaStore.calcShsSubjectNeeds(record, s) }}
+                {{
+                  tnaStore.calcShsSubjectNeeds(record, s) > 0
+                    ? `+${tnaStore.calcShsSubjectNeeds(record, s)}`
+                    : tnaStore.calcShsSubjectNeeds(record, s)
+                }}
               </td>
-              <td
-                class="col-num font-bold sub-total-val"
-                :class="tnaStore.calcShsTotalNeeds(record) > 0 ? 'text-red' : 'text-green'"
-              >
-                {{ tnaStore.calcShsTotalNeeds(record) }}
+              <td class="col-num font-bold sub-total-val">
+                <span
+                  class="badge"
+                  :class="
+                    tnaStore.calcShsTotalNeeds(record) > 0
+                      ? 'badge-danger'
+                      : tnaStore.calcShsTotalNeeds(record) < 0
+                      ? 'badge-surplus'
+                      : 'badge-success'
+                  "
+                >
+                  {{
+                    tnaStore.calcShsTotalNeeds(record) > 0
+                      ? `+${tnaStore.calcShsTotalNeeds(record)} Needs`
+                      : tnaStore.calcShsTotalNeeds(record) < 0
+                      ? `${tnaStore.calcShsTotalNeeds(record)} Excess`
+                      : '0 Balanced'
+                  }}
+                </span>
               </td>
 
               <td class="col-actions">
@@ -585,6 +700,13 @@ function resetToDefault() {
       category="SHS"
       @close="isImportModalOpen = false"
       @import="handleImport"
+    />
+
+    <!-- Manage Subjects Modal -->
+    <ManageSubjectsModal
+      :is-open="isSubjectsModalOpen"
+      category="SHS"
+      @close="isSubjectsModalOpen = false"
     />
 
     <!-- Add/Edit Modal with Subject Inputs -->
@@ -632,11 +754,11 @@ function resetToDefault() {
                   <td><input v-model.number="formState.existing[subj]" type="number" min="0" class="mini-input" /></td>
                   <td><input v-model.number="formState.transferOut[subj]" type="number" min="0" class="mini-input" disabled title="Managed in the Deployment tab" /></td>
                   <td><input v-model.number="formState.transferIn[subj]" type="number" min="0" class="mini-input" disabled title="Managed in the Deployment tab" /></td>
-                  <td class="col-num font-semibold" :class="(formState.required[subj] - formState.existing[subj]) > 0 ? 'text-red' : 'text-green'">
-                    {{ formState.required[subj] - formState.existing[subj] }}
+                  <td class="col-num font-semibold" :class="((formState.required[subj] ?? 0) - (formState.existing[subj] ?? 0)) > 0 ? 'text-red' : 'text-green'">
+                    {{ (formState.required[subj] ?? 0) - (formState.existing[subj] ?? 0) }}
                   </td>
-                  <td class="col-num font-bold" :class="((formState.required[subj] - formState.existing[subj]) + formState.transferOut[subj] - formState.transferIn[subj]) > 0 ? 'text-red' : 'text-green'">
-                    {{ (formState.required[subj] - formState.existing[subj]) + formState.transferOut[subj] - formState.transferIn[subj] }}
+                  <td class="col-num font-bold" :class="(((formState.required[subj] ?? 0) - (formState.existing[subj] ?? 0)) + (formState.transferOut[subj] ?? 0) - (formState.transferIn[subj] ?? 0)) > 0 ? 'text-red' : 'text-green'">
+                    {{ ((formState.required[subj] ?? 0) - (formState.existing[subj] ?? 0)) + (formState.transferOut[subj] ?? 0) - (formState.transferIn[subj] ?? 0) }}
                   </td>
                 </tr>
               </tbody>
@@ -927,7 +1049,14 @@ input:disabled {
 
 .table-responsive {
   overflow-x: auto;
+  overflow-y: auto;
   max-height: calc(100vh - 280px);
+}
+
+.analysis-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 5;
 }
 
 .analysis-table {
@@ -963,6 +1092,74 @@ input:disabled {
   padding: 0.7rem 0.85rem;
   border-bottom: 1px solid var(--color-border);
   vertical-align: middle;
+  transition: background-color 0.12s ease;
+}
+
+/* Sticky Frozen Left Columns (School ID & School Name) */
+.analysis-table th.col-id,
+.analysis-table tbody td:first-child {
+  position: sticky;
+  left: 0;
+  width: 95px;
+  min-width: 95px;
+  max-width: 95px;
+}
+
+.analysis-table th.col-name,
+.analysis-table tbody td.school-name-cell {
+  position: sticky;
+  left: 95px;
+  width: 175px;
+  min-width: 175px;
+  max-width: 175px;
+  border-right: 2px solid #cbd5e1;
+  box-shadow: 3px 0 6px -2px rgba(15, 23, 42, 0.08);
+}
+
+.analysis-table th.col-id,
+.analysis-table th.col-name {
+  z-index: 8;
+  background: #f8fafc;
+}
+
+.sticky-group-info {
+  position: sticky;
+  left: 0;
+  z-index: 9;
+  background: #f8fafc !important;
+  border-right: 2px solid #cbd5e1 !important;
+  box-shadow: 3px 0 6px -2px rgba(15, 23, 42, 0.08);
+}
+
+.analysis-table tbody td:first-child,
+.analysis-table tbody td.school-name-cell {
+  z-index: 3;
+  background: #ffffff;
+}
+
+/* Row Hover & Click Selection Highlight */
+.analysis-table tbody tr {
+  cursor: pointer;
+}
+
+.analysis-table tbody tr:hover td,
+.analysis-table tbody tr:hover td:first-child,
+.analysis-table tbody tr:hover td.school-name-cell {
+  background-color: #eff6ff !important;
+}
+
+.analysis-table tbody tr.row-selected td,
+.analysis-table tbody tr.row-selected td:first-child,
+.analysis-table tbody tr.row-selected td.school-name-cell {
+  background-color: #dbeafe !important;
+}
+
+.analysis-table tbody tr.row-selected td:first-child {
+  box-shadow: inset 4px 0 0 #2563eb;
+}
+
+.analysis-table tbody tr.row-selected td.school-name-cell {
+  color: #1e3a8a;
 }
 
 .font-mono {

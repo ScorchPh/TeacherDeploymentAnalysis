@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { tnaStore } from '../stores/tnaStore'
 
 const route = useRoute()
 const router = useRouter()
+const isSidebarHidden = ref(false)
 
 const navItems = [
   {
@@ -50,7 +51,7 @@ const currentDesc = computed(() => {
 <template>
   <div class="desktop-container">
     <!-- Left Sidebar -->
-    <aside class="sidebar">
+    <aside class="sidebar" :class="{ 'sidebar-hidden': isSidebarHidden }">
       <div class="sidebar-header">
         <div class="brand-badge">
           <span class="brand-icon">🏛️</span>
@@ -59,6 +60,13 @@ const currentDesc = computed(() => {
             <span class="brand-subtitle">Staff Needs & Transfers</span>
           </div>
         </div>
+        <button
+          class="sidebar-close-btn"
+          title="Hide Sidebar"
+          @click="isSidebarHidden = true"
+        >
+          ◀
+        </button>
       </div>
 
       <div class="nav-section-title">MAIN NAVIGATION</div>
@@ -99,11 +107,25 @@ const currentDesc = computed(() => {
       <!-- Top Navbar -->
       <header class="top-navbar">
         <div class="navbar-left">
+          <button
+            class="sidebar-toggle-btn"
+            :title="isSidebarHidden ? 'Show Sidebar' : 'Hide Sidebar'"
+            @click="isSidebarHidden = !isSidebarHidden"
+          >
+            <span class="toggle-icon">{{ isSidebarHidden ? '☰' : '⇤' }}</span>
+            <span class="toggle-text">{{ isSidebarHidden ? 'Menu' : 'Hide Sidebar' }}</span>
+          </button>
           <h1 class="page-title">{{ currentTitle }}</h1>
           <span class="page-tag">{{ currentDesc }}</span>
         </div>
 
         <div class="navbar-right">
+          <div class="indicator-legend">
+            <span class="legend-item legend-needs">🔴 +Needs (Shortage)</span>
+            <span class="legend-item legend-excess">🔵 -Excess (Surplus)</span>
+            <span class="legend-item legend-balanced">🟢 0 Balanced</span>
+          </div>
+
           <div class="sy-badge">
             <span class="dot-live"></span>
             <span>School Year: <strong>2025–2026</strong></span>
@@ -142,11 +164,44 @@ const currentDesc = computed(() => {
   flex-shrink: 0;
   border-right: 1px solid #1e293b;
   user-select: none;
+  transition: width 0.22s ease, opacity 0.18s ease;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.sidebar.sidebar-hidden {
+  width: 0;
+  border-right: none;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .sidebar-header {
   padding: 1.25rem 1.25rem 1rem;
   border-bottom: 1px solid #1e293b;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sidebar-close-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #cbd5e1;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  transition: all 0.15s ease;
+}
+
+.sidebar-close-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
 }
 
 .brand-badge {
@@ -334,8 +389,67 @@ const currentDesc = computed(() => {
 
 .navbar-left {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 0.75rem;
+}
+
+.sidebar-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #1e293b;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sidebar-toggle-btn:hover {
+  background: #e2e8f0;
+  border-color: #94a3b8;
+}
+
+.toggle-icon {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.indicator-legend {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.legend-item {
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 0.28rem 0.6rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.legend-needs {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #f87171;
+}
+
+.legend-excess {
+  background: #e0f2fe;
+  color: #075985;
+  border: 1px solid #38bdf8;
+}
+
+.legend-balanced {
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #4ade80;
 }
 
 .page-title {

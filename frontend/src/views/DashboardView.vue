@@ -2,7 +2,7 @@
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { tnaStore } from '../stores/tnaStore'
-import { JHS_SUBJECTS, SHS_SUBJECTS, type CategoryType } from '../types/tna'
+import { type CategoryType } from '../types/tna'
 
 const router = useRouter()
 const levelFilter = ref<'ALL' | CategoryType>('ALL')
@@ -138,8 +138,8 @@ const levelSummaries = computed(() => {
 
   return [
     buildLevel('ES', 'Elementary (ES)', 'General Elementary Faculty', '/es', '🏫'),
-    buildLevel('JHS', 'Junior High (JHS)', '9 Core Subject Areas', '/jhs', '📘'),
-    buildLevel('SHS', 'Senior High (SHS)', '10 Academic & TVL Tracks', '/shs', '🎓'),
+    buildLevel('JHS', 'Junior High (JHS)', `${tnaStore.jhsSubjects.length} Core Subject Areas`, '/jhs', '📘'),
+    buildLevel('SHS', 'Senior High (SHS)', `${tnaStore.shsSubjects.length} Academic & TVL Tracks`, '/shs', '🎓'),
   ]
 })
 
@@ -163,7 +163,7 @@ const excessAndBalancedSchools = computed(() =>
 
 // JHS Subject Breakdown (Most Needed vs Excess across all JHS schools)
 const jhsSubjectStats = computed(() => {
-  return JHS_SUBJECTS.map((subj) => {
+  return tnaStore.jhsSubjects.map((subj) => {
     const req = tnaStore.jhsRecords.reduce((a, r) => a + (Number(r.required[subj]) || 0), 0)
     const exist = tnaStore.jhsRecords.reduce((a, r) => a + (Number(r.existing[subj]) || 0), 0)
     const tout = tnaStore.jhsRecords.reduce((a, r) => a + (Number(r.transferOut[subj]) || 0), 0)
@@ -176,7 +176,7 @@ const jhsSubjectStats = computed(() => {
 
 // SHS Track/Subject Breakdown (Most Needed vs Excess across all SHS schools)
 const shsSubjectStats = computed(() => {
-  return SHS_SUBJECTS.map((subj) => {
+  return tnaStore.shsSubjects.map((subj) => {
     const req = tnaStore.shsRecords.reduce((a, r) => a + (Number(r.required[subj]) || 0), 0)
     const exist = tnaStore.shsRecords.reduce((a, r) => a + (Number(r.existing[subj]) || 0), 0)
     const tout = tnaStore.shsRecords.reduce((a, r) => a + (Number(r.transferOut[subj]) || 0), 0)

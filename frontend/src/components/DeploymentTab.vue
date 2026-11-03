@@ -3,8 +3,6 @@ import { ref, computed } from 'vue'
 import { tnaStore } from '../stores/tnaStore'
 import { exportDeploymentsExcel } from '../utils/excelTemplate'
 import {
-  JHS_SUBJECTS,
-  SHS_SUBJECTS,
   type CategoryType,
   type DeploymentRecord,
   type TransferType,
@@ -24,7 +22,11 @@ const POSITIONS = [
 
 const hasSubject = computed(() => props.category !== 'ES')
 const subjects = computed<string[]>(() =>
-  props.category === 'JHS' ? JHS_SUBJECTS : props.category === 'SHS' ? SHS_SUBJECTS : []
+  props.category === 'JHS'
+    ? tnaStore.jhsSubjects
+    : props.category === 'SHS'
+    ? tnaStore.shsSubjects
+    : []
 )
 
 const searchQuery = ref('')

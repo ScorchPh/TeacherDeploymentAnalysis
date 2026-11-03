@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx'
-import { JHS_SUBJECTS, SHS_SUBJECTS, type CategoryType } from '../types/tna'
+import type { CategoryType } from '../types/tna'
 import { tnaStore } from '../stores/tnaStore'
 
 export interface ParsedImportRow {
@@ -22,39 +22,53 @@ function getDateStamp(): string {
 }
 
 export function downloadTemplateFile(category: CategoryType) {
-  let wsData: (string | number)[][] = []
+  const wb = XLSX.utils.book_new()
 
   if (category === 'ES') {
-    wsData = [
-      ['School ID', 'School Name', 'Required', 'Existing'],
-      ['119964', 'Buaya ES', 55, 51],
-      ['119966', 'Babag II ES', 51, 43],
+    const row1 = ['SCHOOL INFO', '', 'TEACHER NEEDS ANALYSIS', '']
+    const row2 = ['School ID', 'School Name', 'Required', 'Existing']
+    const ws = XLSX.utils.aoa_to_sheet([row1, row2])
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 1 } },
+      { s: { r: 0, c: 2 }, e: { r: 0, c: 3 } },
     ]
-  } else if (category === 'JHS') {
-    const headers: string[] = ['School ID', 'School Name']
-    JHS_SUBJECTS.forEach((subj) => {
-      headers.push(`${subj} Required`, `${subj} Existing`)
-    })
-    wsData = [
-      headers,
-      ['303031', 'Abuno HS', 4, 4, 4, 4, 4, 3, 4, 4, 4, 4, 4, 3, 4, 4, 4, 3, 0, 0],
-      ['303032', 'Babag NHS', 20, 29, 20, 23, 20, 19, 20, 19, 20, 17, 20, 23, 20, 21, 20, 8, 0, 2],
-    ]
+    ws['!cols'] = [{ wch: 14 }, { wch: 26 }, { wch: 14 }, { wch: 14 }]
+    XLSX.utils.book_append_sheet(wb, ws, 'ES_Template')
   } else {
-    const headers: string[] = ['School ID', 'School Name']
-    SHS_SUBJECTS.forEach((subj) => {
-      headers.push(`${subj} Required`, `${subj} Existing`)
-    })
-    wsData = [
-      headers,
-      ['340001', 'Babag SHS', 1, 2, 8, 6, 13, 15, 5, 9, 4, 2, 4, 11, 7, 11, 9, 10, 4, 3, 1, 2],
-      ['340002', 'Bankal SHS', 1, 2, 7, 6, 11, 7, 5, 3, 3, 4, 4, 7, 8, 7, 5, 5, 4, 3, 1, 4],
+    const subjects = category === 'JHS' ? tnaStore.jhsSubjects : tnaStore.shsSubjects
+    const subjCount = subjects.length
+    const reqTitle =
+      category === 'JHS'
+        ? 'REQUIRED TEACHERS PER SUBJECT'
+        : 'REQUIRED TEACHERS PER SUBJECT / TRACK'
+    const existTitle =
+      category === 'JHS'
+        ? 'EXISTING TEACHERS PER SUBJECT'
+        : 'EXISTING TEACHERS PER SUBJECT / TRACK'
+
+    const row1: string[] = ['SCHOOL INFO', '']
+    const row2: string[] = ['School ID', 'School Name']
+
+    // Required group
+    row1.push(reqTitle, ...Array(Math.max(0, subjCount - 1)).fill(''))
+    row2.push(...subjects)
+
+    // Existing group
+    row1.push(existTitle, ...Array(Math.max(0, subjCount - 1)).fill(''))
+    row2.push(...subjects)
+
+    const ws = XLSX.utils.aoa_to_sheet([row1, row2])
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 1 } },
+      { s: { r: 0, c: 2 }, e: { r: 0, c: 2 + subjCount - 1 } },
+      { s: { r: 0, c: 2 + subjCount }, e: { r: 0, c: 2 + subjCount * 2 - 1 } },
     ]
+    ws['!cols'] = row2.map((h, idx) => ({
+      wch: idx === 0 ? 14 : idx === 1 ? 26 : Math.max(h.length + 4, 11),
+    }))
+    XLSX.utils.book_append_sheet(wb, ws, `${category}_Template`)
   }
 
-  const ws = XLSX.utils.aoa_to_sheet(wsData)
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, `${category}_Template`)
   XLSX.writeFile(wb, `DepEd_${category}_TNA_Template.xlsx`)
 }
 
@@ -94,80 +108,201 @@ function buildDeploymentSheetRows(category: CategoryType): (string | number)[][]
 }
 
 /**
- * Exports a complete backup Excel file containing both the current Needs Analysis
- * table (re-importable format) and the current Deployment records for that category.
+ * Exports a complete backup Excel file matching the exact layout of the UI table
+ * (with merged category headers, subject columns + TOTAL columns, and bottom summary row)
+ * as well as the current Deployment records for that category.
  */
 export function exportCategoryBackupExcel(category: CategoryType) {
   const wb = XLSX.utils.book_new()
 
   if (category === 'ES') {
-    const analysisRows: (string | number)[][] = [
-      ['School ID', 'School Name', 'Required', 'Existing', 'GAP', 'Transfer Out', 'Transfer In', 'Needs'],
+    const row1 = [
+      'SCHOOL INFO',
+      '',
+      'ELEMENTARY SCHOOL TEACHER NEEDS ANALYSIS',
+      '',
+      '',
+      '',
+      '',
+      '',
     ]
+    const row2 = [
+      'School ID',
+      'School Name',
+      'Required',
+      'Existing',
+      'GAP',
+      'Transfer Out',
+      'Transfer In',
+      'Needs',
+    ]
+    const analysisRows: (string | number)[][] = [row1, row2]
+
+    let totReq = 0
+    let totExist = 0
+    let totGap = 0
+    let totOut = 0
+    let totIn = 0
+    let totNeeds = 0
+
     tnaStore.esRecords.forEach((r) => {
+      const gap = tnaStore.calcEsGap(r)
+      const needs = tnaStore.calcEsNeeds(r)
+      totReq += r.required
+      totExist += r.existing
+      totGap += gap
+      totOut += r.transferOut
+      totIn += r.transferIn
+      totNeeds += needs
+
       analysisRows.push([
         r.schoolId,
         r.schoolName,
         r.required,
         r.existing,
-        tnaStore.calcEsGap(r),
+        gap,
         r.transferOut,
         r.transferIn,
-        tnaStore.calcEsNeeds(r),
+        needs,
       ])
     })
+
+    analysisRows.push([
+      '',
+      `TOTAL (${tnaStore.esRecords.length} Schools)`,
+      totReq,
+      totExist,
+      totGap,
+      totOut,
+      totIn,
+      totNeeds,
+    ])
+
     const wsAnalysis = XLSX.utils.aoa_to_sheet(analysisRows)
+    wsAnalysis['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 1 } },
+      { s: { r: 0, c: 2 }, e: { r: 0, c: 7 } },
+    ]
+    wsAnalysis['!cols'] = [
+      { wch: 14 },
+      { wch: 28 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 12 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 14 },
+    ]
     XLSX.utils.book_append_sheet(wb, wsAnalysis, 'ES_Needs_Backup')
-  } else if (category === 'JHS') {
-    const headers: string[] = ['School ID', 'School Name']
-    JHS_SUBJECTS.forEach((subj) => {
-      headers.push(`${subj} Required`, `${subj} Existing`)
-    })
-    headers.push('Total Required', 'Total Existing', 'Total GAP', 'Total T-Out', 'Total T-In', 'Total Needs')
-
-    const analysisRows: (string | number)[][] = [headers]
-    tnaStore.jhsRecords.forEach((r) => {
-      const row: (string | number)[] = [r.schoolId, r.schoolName]
-      JHS_SUBJECTS.forEach((subj) => {
-        row.push(r.required[subj] || 0, r.existing[subj] || 0)
-      })
-      row.push(
-        tnaStore.calcJhsTotalRequired(r),
-        tnaStore.calcJhsTotalExisting(r),
-        tnaStore.calcJhsTotalGap(r),
-        tnaStore.calcJhsTotalTransferOut(r),
-        tnaStore.calcJhsTotalTransferIn(r),
-        tnaStore.calcJhsTotalNeeds(r)
-      )
-      analysisRows.push(row)
-    })
-    const wsAnalysis = XLSX.utils.aoa_to_sheet(analysisRows)
-    XLSX.utils.book_append_sheet(wb, wsAnalysis, 'JHS_Needs_Backup')
   } else {
-    const headers: string[] = ['School ID', 'School Name']
-    SHS_SUBJECTS.forEach((subj) => {
-      headers.push(`${subj} Required`, `${subj} Existing`)
-    })
-    headers.push('Total Required', 'Total Existing', 'Total GAP', 'Total T-Out', 'Total T-In', 'Total Needs')
+    const isJhs = category === 'JHS'
+    const subjects = isJhs ? tnaStore.jhsSubjects : tnaStore.shsSubjects
+    const records = isJhs ? tnaStore.jhsRecords : tnaStore.shsRecords
+    const groupSpan = subjects.length + 1 // subjects + TOTAL
 
-    const analysisRows: (string | number)[][] = [headers]
-    tnaStore.shsRecords.forEach((r) => {
-      const row: (string | number)[] = [r.schoolId, r.schoolName]
-      SHS_SUBJECTS.forEach((subj) => {
-        row.push(r.required[subj] || 0, r.existing[subj] || 0)
+    const groupTitles = [
+      isJhs ? 'REQUIRED TEACHERS PER SUBJECT' : 'REQUIRED TEACHERS PER SUBJECT / TRACK',
+      isJhs ? 'EXISTING TEACHERS PER SUBJECT' : 'EXISTING TEACHERS PER SUBJECT / TRACK',
+      'GAP (REQ - EXIST)',
+      'TRANSFERS OUT',
+      'TRANSFERS IN',
+      'NEEDS ((GAP + T-OUT) - T-IN)',
+    ]
+
+    const row1: string[] = ['SCHOOL INFO', '']
+    const row2: string[] = ['School ID', 'School Name']
+    const merges: XLSX.Range[] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 1 } }]
+
+    let currentCol = 2
+    groupTitles.forEach((title) => {
+      row1.push(title, ...Array(Math.max(0, groupSpan - 1)).fill(''))
+      row2.push(...subjects, 'TOTAL')
+      merges.push({
+        s: { r: 0, c: currentCol },
+        e: { r: 0, c: currentCol + groupSpan - 1 },
       })
-      row.push(
-        tnaStore.calcShsTotalRequired(r),
-        tnaStore.calcShsTotalExisting(r),
-        tnaStore.calcShsTotalGap(r),
-        tnaStore.calcShsTotalTransferOut(r),
-        tnaStore.calcShsTotalTransferIn(r),
-        tnaStore.calcShsTotalNeeds(r)
-      )
+      currentCol += groupSpan
+    })
+
+    const analysisRows: (string | number)[][] = [row1, row2]
+    const colTotals: number[] = Array(groupTitles.length * groupSpan).fill(0)
+
+    records.forEach((r) => {
+      const row: (string | number)[] = [r.schoolId, r.schoolName]
+      const numericVals: number[] = []
+
+      // 1. Required
+      let sumReq = 0
+      subjects.forEach((s) => {
+        const v = r.required[s] || 0
+        sumReq += v
+        numericVals.push(v)
+      })
+      numericVals.push(sumReq)
+
+      // 2. Existing
+      let sumExist = 0
+      subjects.forEach((s) => {
+        const v = r.existing[s] || 0
+        sumExist += v
+        numericVals.push(v)
+      })
+      numericVals.push(sumExist)
+
+      // 3. GAP
+      let sumGap = 0
+      subjects.forEach((s) => {
+        const v = (r.required[s] || 0) - (r.existing[s] || 0)
+        sumGap += v
+        numericVals.push(v)
+      })
+      numericVals.push(sumGap)
+
+      // 4. Transfers Out
+      let sumOut = 0
+      subjects.forEach((s) => {
+        const v = r.transferOut[s] || 0
+        sumOut += v
+        numericVals.push(v)
+      })
+      numericVals.push(sumOut)
+
+      // 5. Transfers In
+      let sumIn = 0
+      subjects.forEach((s) => {
+        const v = r.transferIn[s] || 0
+        sumIn += v
+        numericVals.push(v)
+      })
+      numericVals.push(sumIn)
+
+      // 6. Needs
+      let sumNeeds = 0
+      subjects.forEach((s) => {
+        const gap = (r.required[s] || 0) - (r.existing[s] || 0)
+        const v = gap + (r.transferOut[s] || 0) - (r.transferIn[s] || 0)
+        sumNeeds += v
+        numericVals.push(v)
+      })
+      numericVals.push(sumNeeds)
+
+      numericVals.forEach((v, i) => {
+        colTotals[i] = (colTotals[i] || 0) + v
+        row.push(v)
+      })
+
       analysisRows.push(row)
     })
+
+    // Add bottom TOTAL row
+    analysisRows.push(['', `TOTAL (${records.length} Schools)`, ...colTotals])
+
     const wsAnalysis = XLSX.utils.aoa_to_sheet(analysisRows)
-    XLSX.utils.book_append_sheet(wb, wsAnalysis, 'SHS_Needs_Backup')
+    wsAnalysis['!merges'] = merges
+    wsAnalysis['!cols'] = row2.map((h, idx) => ({
+      wch: idx === 0 ? 14 : idx === 1 ? 28 : Math.max(h.length + 3, 10),
+    }))
+    XLSX.utils.book_append_sheet(wb, wsAnalysis, `${category}_Needs_Backup`)
   }
 
   const wsDeploy = XLSX.utils.aoa_to_sheet(buildDeploymentSheetRows(category))
@@ -205,18 +340,105 @@ export function parseCategoryWorkbook(
     return { rows: [], error: 'The selected file is empty or missing data rows.' }
   }
 
-  const rawHeaders = (jsonData[0] || []).map((h) => String(h || '').trim().toLowerCase())
+  const row0 = (jsonData[0] || []).map((h) => String(h || '').trim())
+  const row1 = (jsonData[1] || []).map((h) => String(h || '').trim())
+
+  // Detect if workbook uses 2-row grouped headers (like the UI table / Export Backup / Template)
+  const isTwoRowGroupedHeader =
+    row0.some(
+      (h) =>
+        h.toLowerCase().includes('school info') ||
+        h.toLowerCase().includes('required teachers') ||
+        h.toLowerCase().includes('required number') ||
+        h.toLowerCase().includes('teacher needs analysis')
+    ) ||
+    row1.some(
+      (h) =>
+        h.toLowerCase() === 'school id' ||
+        h.toLowerCase() === 'school name' ||
+        h.toLowerCase() === 'filipino' ||
+        h.toLowerCase() === 'abm'
+    )
+
+  let originalHeaders: string[] = []
+  let dataStartIdx = 1
+
+  if (isTwoRowGroupedHeader) {
+    dataStartIdx = 2
+    const maxCols = Math.max(row0.length, row1.length)
+    let activeGroup = ''
+
+    for (let c = 0; c < maxCols; c++) {
+      if (row0[c]) {
+        activeGroup = row0[c]!
+      }
+      const gLower = activeGroup.toLowerCase()
+      const sub = row1[c] || ''
+      const subLower = sub.toLowerCase()
+
+      if (!sub && row0[c] && row0[c]!.toLowerCase() === 'school') {
+        originalHeaders.push('School Name')
+      } else if (
+        subLower === 'school id' ||
+        subLower === 'school name' ||
+        subLower === 'total' ||
+        category === 'ES'
+      ) {
+        originalHeaders.push(sub)
+      } else if (sub) {
+        if (gLower.includes('required')) {
+          originalHeaders.push(`${sub} Required`)
+        } else if (gLower.includes('existing')) {
+          originalHeaders.push(`${sub} Existing`)
+        } else if (gLower.includes('gap')) {
+          originalHeaders.push(`${sub} GAP`)
+        } else if (gLower.includes('out')) {
+          originalHeaders.push(`${sub} T-Out`)
+        } else if (gLower.includes('transfer') && gLower.includes('in')) {
+          originalHeaders.push(`${sub} T-In`)
+        } else if (gLower.includes('needs')) {
+          originalHeaders.push(`${sub} Needs`)
+        } else {
+          originalHeaders.push(sub)
+        }
+      } else {
+        originalHeaders.push('')
+      }
+    }
+  } else {
+    originalHeaders = row0
+    dataStartIdx = 1
+  }
+
+  const rawHeaders = originalHeaders.map((h) => h.toLowerCase())
 
   const schoolNameIdx = rawHeaders.findIndex(
     (h) => h.includes('school') && (h.includes('name') || !h.includes('id'))
   )
   const schoolIdIdx = rawHeaders.findIndex((h) => h.includes('id') || h.includes('school id'))
 
+  if (category === 'JHS' || category === 'SHS') {
+    // Auto-detect any new "<Subject> Required" or "<Subject> Req" columns in the Excel file
+    originalHeaders.forEach((origH) => {
+      const match = origH.match(/^(.+?)\s+(required|req)$/i)
+      if (match && match[1]) {
+        const candidate = match[1].trim()
+        if (
+          candidate &&
+          candidate.toLowerCase() !== 'total' &&
+          !candidate.toLowerCase().includes('school')
+        ) {
+          tnaStore.addSubject(category, candidate)
+        }
+      }
+    })
+  }
+
   const subjects =
     category === 'JHS'
-      ? (JHS_SUBJECTS as readonly string[])
+      ? tnaStore.jhsSubjects
       : category === 'SHS'
-      ? (SHS_SUBJECTS as readonly string[])
+      ? tnaStore.shsSubjects
       : []
 
   // Map subject columns if category is JHS or SHS
@@ -249,7 +471,7 @@ export function parseCategoryWorkbook(
 
   const parsed: ParsedImportRow[] = []
 
-  for (let i = 1; i < jsonData.length; i++) {
+  for (let i = dataStartIdx; i < jsonData.length; i++) {
     const row = jsonData[i]
     if (!row || row.length === 0) continue
 
@@ -259,6 +481,13 @@ export function parseCategoryWorkbook(
       schoolIdIdx !== -1 ? String(row[schoolIdIdx] || '').trim() : String(row[0] || '').trim()
 
     if (!sName && !sId) continue
+    if (
+      sName.toUpperCase().startsWith('TOTAL') ||
+      sId.toUpperCase().startsWith('TOTAL') ||
+      sName.toUpperCase().includes('NEW SHS ITEMS')
+    ) {
+      continue
+    }
 
     if (hasSubjectCols) {
       const reqBySubj: Record<string, number> = {}
@@ -268,8 +497,8 @@ export function parseCategoryWorkbook(
 
       subjects.forEach((subj) => {
         const map = subjectColMap[subj]
-        const rVal = map && map.reqIdx !== -1 ? Number(row[map.reqIdx]) || 0 : 0
-        const eVal = map && map.existIdx !== -1 ? Number(row[map.existIdx]) || 0 : 0
+        const rVal = map && map.reqIdx !== -1 ? Math.round(Number(row[map.reqIdx]) || 0) : 0
+        const eVal = map && map.existIdx !== -1 ? Math.round(Number(row[map.existIdx]) || 0) : 0
         reqBySubj[subj] = rVal
         existBySubj[subj] = eVal
         totalReq += rVal
@@ -290,10 +519,10 @@ export function parseCategoryWorkbook(
       parsed.push({
         schoolId: sId,
         schoolName: sName,
-        required: reqIdx !== -1 ? Number(row[reqIdx]) || 0 : Number(row[2]) || 0,
-        existing: existIdx !== -1 ? Number(row[existIdx]) || 0 : Number(row[3]) || 0,
-        transferOut: tOutIdx !== -1 ? Number(row[tOutIdx]) || 0 : Number(row[4]) || 0,
-        transferIn: tInIdx !== -1 ? Number(row[tInIdx]) || 0 : Number(row[5]) || 0,
+        required: reqIdx !== -1 ? Math.round(Number(row[reqIdx]) || 0) : Math.round(Number(row[2]) || 0),
+        existing: existIdx !== -1 ? Math.round(Number(row[existIdx]) || 0) : Math.round(Number(row[3]) || 0),
+        transferOut: tOutIdx !== -1 ? Math.round(Number(row[tOutIdx]) || 0) : Math.round(Number(row[4]) || 0),
+        transferIn: tInIdx !== -1 ? Math.round(Number(row[tInIdx]) || 0) : Math.round(Number(row[5]) || 0),
       })
     }
   }

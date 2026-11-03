@@ -12,8 +12,10 @@ import { JHS_SUBJECTS, SHS_SUBJECTS } from '../types/tna'
 
 const ES_STORAGE_KEY = 'tna_es_records_v1'
 const JHS_STORAGE_KEY = 'tna_jhs_records_v1'
-const SHS_STORAGE_KEY = 'tna_shs_records_v1'
+const SHS_STORAGE_KEY = 'tna_shs_records_v2'
 const DEPLOYMENT_STORAGE_KEY = 'tna_deployment_records_v1'
+const JHS_SUBJECTS_STORAGE_KEY = 'tna_jhs_subjects_v1'
+const SHS_SUBJECTS_STORAGE_KEY = 'tna_shs_subjects_v1'
 
 // Initial ES Data from DepEd Lapu-Lapu City files
 const initialEsData: EsRecord[] = [
@@ -95,28 +97,28 @@ const initialShsData: ShsRecord[] = [
     id: '1',
     schoolId: '340001',
     schoolName: 'Babag SHS',
-    required: { ABM: 1, AralPan: 8, English: 13, Filipino: 5, Math: 4, Science: 4, 'TVL-AFA': 7, 'TVL-HE': 9, 'TVL-IA': 4, 'TVL-ICT': 1 },
-    existing: { ABM: 2, AralPan: 6, English: 15, Filipino: 9, Math: 2, Science: 11, 'TVL-AFA': 11, 'TVL-HE': 10, 'TVL-IA': 3, 'TVL-ICT': 2 },
-    transferOut: { ABM: 0, AralPan: 0, English: 0, Filipino: 0, Math: 0, Science: 0, 'TVL-AFA': 0, 'TVL-HE': 0, 'TVL-IA': 0, 'TVL-ICT': 0 },
-    transferIn: { ABM: 0, AralPan: 0, English: 0, Filipino: 0, Math: 0, Science: 0, 'TVL-AFA': 0, 'TVL-HE': 0, 'TVL-IA': 0, 'TVL-ICT': 0 },
+    required: { ABM: 1, AralPan: 8, English: 12, Filipino: 5, MAPEH: 4, Math: 4, Science: 7, 'TVL-AFA': 9, 'TVL-HE': 4, 'TVL-IA': 1, 'TVL-ICT': 4 },
+    existing: { ABM: 3, AralPan: 6, English: 15, Filipino: 9, MAPEH: 3, Math: 11, Science: 11, 'TVL-AFA': 0, 'TVL-HE': 10, 'TVL-IA': 0, 'TVL-ICT': 3 },
+    transferOut: { ABM: 0, AralPan: 0, English: 0, Filipino: 0, MAPEH: 0, Math: 0, Science: 0, 'TVL-AFA': 0, 'TVL-HE': 0, 'TVL-IA': 0, 'TVL-ICT': 0 },
+    transferIn: { ABM: 0, AralPan: 0, English: 0, Filipino: 0, MAPEH: 0, Math: 0, Science: 0, 'TVL-AFA': 0, 'TVL-HE': 0, 'TVL-IA': 0, 'TVL-ICT': 0 },
   },
   {
     id: '2',
     schoolId: '340002',
     schoolName: 'Bankal SHS',
-    required: { ABM: 1, AralPan: 7, English: 11, Filipino: 5, Math: 3, Science: 4, 'TVL-AFA': 8, 'TVL-HE': 5, 'TVL-IA': 4, 'TVL-ICT': 1 },
-    existing: { ABM: 2, AralPan: 6, English: 7, Filipino: 3, Math: 4, Science: 7, 'TVL-AFA': 7, 'TVL-HE': 5, 'TVL-IA': 3, 'TVL-ICT': 4 },
-    transferOut: { ABM: 0, AralPan: 0, English: 0, Filipino: 0, Math: 0, Science: 0, 'TVL-AFA': 0, 'TVL-HE': 0, 'TVL-IA': 0, 'TVL-ICT': 0 },
-    transferIn: { ABM: 0, AralPan: 0, English: 0, Filipino: 0, Math: 0, Science: 0, 'TVL-AFA': 0, 'TVL-HE': 0, 'TVL-IA': 0, 'TVL-ICT': 0 },
+    required: { ABM: 1, AralPan: 7, English: 11, Filipino: 5, MAPEH: 3, Math: 4, Science: 8, 'TVL-AFA': 8, 'TVL-HE': 4, 'TVL-IA': 1, 'TVL-ICT': 3 },
+    existing: { ABM: 2, AralPan: 6, English: 7, Filipino: 3, MAPEH: 4, Math: 7, Science: 7, 'TVL-AFA': 0, 'TVL-HE': 5, 'TVL-IA': 0, 'TVL-ICT': 4 },
+    transferOut: { ABM: 0, AralPan: 0, English: 0, Filipino: 0, MAPEH: 0, Math: 0, Science: 0, 'TVL-AFA': 0, 'TVL-HE': 0, 'TVL-IA': 0, 'TVL-ICT': 0 },
+    transferIn: { ABM: 0, AralPan: 0, English: 0, Filipino: 0, MAPEH: 0, Math: 0, Science: 0, 'TVL-AFA': 0, 'TVL-HE': 0, 'TVL-IA': 0, 'TVL-ICT': 0 },
   },
   {
     id: '3',
     schoolId: '340003',
     schoolName: 'Marigondon SHS',
-    required: { ABM: 3, AralPan: 9, English: 14, Filipino: 6, Math: 4, Science: 4, 'TVL-AFA': 9, 'TVL-HE': 9, 'TVL-IA': 5, 'TVL-ICT': 3 },
-    existing: { ABM: 3, AralPan: 6, English: 10, Filipino: 5, Math: 4, Science: 6, 'TVL-AFA': 6, 'TVL-HE': 7, 'TVL-IA': 3, 'TVL-ICT': 3 },
-    transferOut: { ABM: 0, AralPan: 0, English: 0, Filipino: 0, Math: 0, Science: 0, 'TVL-AFA': 0, 'TVL-HE': 0, 'TVL-IA': 0, 'TVL-ICT': 0 },
-    transferIn: { ABM: 0, AralPan: 0, English: 0, Filipino: 0, Math: 0, Science: 0, 'TVL-AFA': 0, 'TVL-HE': 0, 'TVL-IA': 0, 'TVL-ICT': 0 },
+    required: { ABM: 3, AralPan: 9, English: 14, Filipino: 6, MAPEH: 4, Math: 4, Science: 9, 'TVL-AFA': 9, 'TVL-HE': 3, 'TVL-IA': 3, 'TVL-ICT': 3 },
+    existing: { ABM: 3, AralPan: 6, English: 10, Filipino: 5, MAPEH: 4, Math: 6, Science: 6, 'TVL-AFA': 0, 'TVL-HE': 6, 'TVL-IA': 7, 'TVL-ICT': 3 },
+    transferOut: { ABM: 0, AralPan: 0, English: 0, Filipino: 0, MAPEH: 0, Math: 0, Science: 0, 'TVL-AFA': 0, 'TVL-HE': 0, 'TVL-IA': 0, 'TVL-ICT': 0 },
+    transferIn: { ABM: 0, AralPan: 0, English: 0, Filipino: 0, MAPEH: 0, Math: 0, Science: 0, 'TVL-AFA': 0, 'TVL-HE': 0, 'TVL-IA': 0, 'TVL-ICT': 0 },
   },
 ]
 
@@ -131,6 +133,8 @@ function loadStored<T>(key: string, fallback: T[]): T[] {
 }
 
 export const tnaStore = reactive({
+  jhsSubjects: loadStored<string>(JHS_SUBJECTS_STORAGE_KEY, [...JHS_SUBJECTS]),
+  shsSubjects: loadStored<string>(SHS_SUBJECTS_STORAGE_KEY, [...SHS_SUBJECTS]),
   esRecords: loadStored<EsRecord>(ES_STORAGE_KEY, initialEsData),
   jhsRecords: loadStored<JhsRecord>(JHS_STORAGE_KEY, initialJhsData),
   shsRecords: loadStored<ShsRecord>(SHS_STORAGE_KEY, initialShsData),
@@ -138,72 +142,74 @@ export const tnaStore = reactive({
 
   // Calculation helpers for ES
   calcEsGap(r: EsRecord): number {
-    return (Number(r.required) || 0) - (Number(r.existing) || 0)
+    return Math.round(Number(r.required) || 0) - Math.round(Number(r.existing) || 0)
   },
   calcEsNeeds(r: EsRecord): number {
     const gap = this.calcEsGap(r)
-    return (gap + (Number(r.transferOut) || 0)) - (Number(r.transferIn) || 0)
+    return (gap + Math.round(Number(r.transferOut) || 0)) - Math.round(Number(r.transferIn) || 0)
   },
 
   // Calculation helpers for JHS
   calcJhsSubjectGap(r: JhsRecord, s: JhsSubject): number {
-    return (Number(r.required?.[s]) || 0) - (Number(r.existing?.[s]) || 0)
+    return Math.round(Number(r.required?.[s]) || 0) - Math.round(Number(r.existing?.[s]) || 0)
   },
   calcJhsSubjectNeeds(r: JhsRecord, s: JhsSubject): number {
     const gap = this.calcJhsSubjectGap(r, s)
-    return (gap + (Number(r.transferOut?.[s]) || 0)) - (Number(r.transferIn?.[s]) || 0)
+    return (gap + Math.round(Number(r.transferOut?.[s]) || 0)) - Math.round(Number(r.transferIn?.[s]) || 0)
   },
   calcJhsTotalRequired(r: JhsRecord): number {
-    return JHS_SUBJECTS.reduce((acc, s) => acc + (Number(r.required?.[s]) || 0), 0)
+    return this.jhsSubjects.reduce((acc, s) => acc + Math.round(Number(r.required?.[s]) || 0), 0)
   },
   calcJhsTotalExisting(r: JhsRecord): number {
-    return JHS_SUBJECTS.reduce((acc, s) => acc + (Number(r.existing?.[s]) || 0), 0)
+    return this.jhsSubjects.reduce((acc, s) => acc + Math.round(Number(r.existing?.[s]) || 0), 0)
   },
   calcJhsTotalGap(r: JhsRecord): number {
-    return JHS_SUBJECTS.reduce((acc, s) => acc + this.calcJhsSubjectGap(r, s), 0)
+    return this.jhsSubjects.reduce((acc, s) => acc + this.calcJhsSubjectGap(r, s), 0)
   },
   calcJhsTotalTransferOut(r: JhsRecord): number {
-    return JHS_SUBJECTS.reduce((acc, s) => acc + (Number(r.transferOut?.[s]) || 0), 0)
+    return this.jhsSubjects.reduce((acc, s) => acc + Math.round(Number(r.transferOut?.[s]) || 0), 0)
   },
   calcJhsTotalTransferIn(r: JhsRecord): number {
-    return JHS_SUBJECTS.reduce((acc, s) => acc + (Number(r.transferIn?.[s]) || 0), 0)
+    return this.jhsSubjects.reduce((acc, s) => acc + Math.round(Number(r.transferIn?.[s]) || 0), 0)
   },
   calcJhsTotalNeeds(r: JhsRecord): number {
-    return JHS_SUBJECTS.reduce((acc, s) => acc + this.calcJhsSubjectNeeds(r, s), 0)
+    return this.jhsSubjects.reduce((acc, s) => acc + this.calcJhsSubjectNeeds(r, s), 0)
   },
 
   // Calculation helpers for SHS
   calcShsSubjectGap(r: ShsRecord, s: ShsSubject): number {
-    return (Number(r.required?.[s]) || 0) - (Number(r.existing?.[s]) || 0)
+    return Math.round(Number(r.required?.[s]) || 0) - Math.round(Number(r.existing?.[s]) || 0)
   },
   calcShsSubjectNeeds(r: ShsRecord, s: ShsSubject): number {
     const gap = this.calcShsSubjectGap(r, s)
-    return (gap + (Number(r.transferOut?.[s]) || 0)) - (Number(r.transferIn?.[s]) || 0)
+    return (gap + Math.round(Number(r.transferOut?.[s]) || 0)) - Math.round(Number(r.transferIn?.[s]) || 0)
   },
   calcShsTotalRequired(r: ShsRecord): number {
-    return SHS_SUBJECTS.reduce((acc, s) => acc + (Number(r.required?.[s]) || 0), 0)
+    return this.shsSubjects.reduce((acc, s) => acc + Math.round(Number(r.required?.[s]) || 0), 0)
   },
   calcShsTotalExisting(r: ShsRecord): number {
-    return SHS_SUBJECTS.reduce((acc, s) => acc + (Number(r.existing?.[s]) || 0), 0)
+    return this.shsSubjects.reduce((acc, s) => acc + Math.round(Number(r.existing?.[s]) || 0), 0)
   },
   calcShsTotalGap(r: ShsRecord): number {
-    return SHS_SUBJECTS.reduce((acc, s) => acc + this.calcShsSubjectGap(r, s), 0)
+    return this.shsSubjects.reduce((acc, s) => acc + this.calcShsSubjectGap(r, s), 0)
   },
   calcShsTotalTransferOut(r: ShsRecord): number {
-    return SHS_SUBJECTS.reduce((acc, s) => acc + (Number(r.transferOut?.[s]) || 0), 0)
+    return this.shsSubjects.reduce((acc, s) => acc + Math.round(Number(r.transferOut?.[s]) || 0), 0)
   },
   calcShsTotalTransferIn(r: ShsRecord): number {
-    return SHS_SUBJECTS.reduce((acc, s) => acc + (Number(r.transferIn?.[s]) || 0), 0)
+    return this.shsSubjects.reduce((acc, s) => acc + Math.round(Number(r.transferIn?.[s]) || 0), 0)
   },
   calcShsTotalNeeds(r: ShsRecord): number {
-    return SHS_SUBJECTS.reduce((acc, s) => acc + this.calcShsSubjectNeeds(r, s), 0)
+    return this.shsSubjects.reduce((acc, s) => acc + this.calcShsSubjectNeeds(r, s), 0)
   },
 
   // ES Mutations
   addEsRecord(record: Omit<EsRecord, 'id'>) {
     this.esRecords.push({
       ...record,
-      id: Date.now().toString(),
+      required: Math.round(Number(record.required) || 0),
+      existing: Math.round(Number(record.existing) || 0),
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     })
     this.syncTransfers('ES')
   },
@@ -212,6 +218,8 @@ export const tnaStore = reactive({
     if (idx !== -1 && this.esRecords[idx]) {
       const oldName = this.esRecords[idx].schoolName
       Object.assign(this.esRecords[idx], updates)
+      this.esRecords[idx].required = Math.round(Number(this.esRecords[idx].required) || 0)
+      this.esRecords[idx].existing = Math.round(Number(this.esRecords[idx].existing) || 0)
       if (updates.schoolName) this.renameSchoolInDeployments('ES', oldName, updates.schoolName)
       this.syncTransfers('ES')
     }
@@ -224,7 +232,7 @@ export const tnaStore = reactive({
   addJhsRecord(record: Omit<JhsRecord, 'id'>) {
     this.jhsRecords.push({
       ...record,
-      id: Date.now().toString(),
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     })
     this.syncTransfers('JHS')
   },
@@ -245,7 +253,7 @@ export const tnaStore = reactive({
   addShsRecord(record: Omit<ShsRecord, 'id'>) {
     this.shsRecords.push({
       ...record,
-      id: Date.now().toString(),
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     })
     this.syncTransfers('SHS')
   },
@@ -265,27 +273,30 @@ export const tnaStore = reactive({
   // Batch import for ES
   importEsRecords(records: Partial<EsRecord>[]) {
     records.forEach(row => {
-      const existingIdx = this.esRecords.findIndex(
-        r => (row.schoolId && r.schoolId === String(row.schoolId)) || 
-             (row.schoolName && r.schoolName.toLowerCase() === String(row.schoolName).toLowerCase())
-      )
+      const rowName = String(row.schoolName || '').trim().toLowerCase()
+      const rowId = String(row.schoolId || '').trim()
+      const existingIdx = this.esRecords.findIndex(r => {
+        if (rowName) {
+          return r.schoolName.trim().toLowerCase() === rowName
+        }
+        return rowId !== '' && r.schoolId.trim() === rowId
+      })
 
       if (existingIdx !== -1 && this.esRecords[existingIdx]) {
         // Update existing record
         const cur = this.esRecords[existingIdx]
-        if (row.required !== undefined) cur.required = Number(row.required) || 0
-        if (row.existing !== undefined) cur.existing = Number(row.existing) || 0
-        if (row.transferOut !== undefined) cur.transferOut = Number(row.transferOut) || 0
-        if (row.transferIn !== undefined) cur.transferIn = Number(row.transferIn) || 0
-      } else if (row.schoolName || row.schoolId) {
+        if (rowId) cur.schoolId = rowId
+        if (row.required !== undefined) cur.required = Math.round(Number(row.required) || 0)
+        if (row.existing !== undefined) cur.existing = Math.round(Number(row.existing) || 0)
+      } else if (rowName || rowId) {
         // Insert new record
         this.addEsRecord({
-          schoolId: String(row.schoolId || ''),
-          schoolName: String(row.schoolName || 'Unnamed School'),
-          required: Number(row.required) || 0,
-          existing: Number(row.existing) || 0,
-          transferOut: Number(row.transferOut) || 0,
-          transferIn: Number(row.transferIn) || 0,
+          schoolId: rowId,
+          schoolName: String(row.schoolName || 'Unnamed School').trim(),
+          required: Math.round(Number(row.required) || 0),
+          existing: Math.round(Number(row.existing) || 0),
+          transferOut: 0,
+          transferIn: 0,
         })
       }
     })
@@ -334,20 +345,20 @@ export const tnaStore = reactive({
         id: Date.now().toString(),
         schoolId: '',
         schoolName: name,
-        required: createDefaultSubjectRecord(JHS_SUBJECTS),
-        existing: createDefaultSubjectRecord(JHS_SUBJECTS),
-        transferOut: createDefaultSubjectRecord(JHS_SUBJECTS),
-        transferIn: createDefaultSubjectRecord(JHS_SUBJECTS),
+        required: createDefaultSubjectRecord(this.jhsSubjects),
+        existing: createDefaultSubjectRecord(this.jhsSubjects),
+        transferOut: createDefaultSubjectRecord(this.jhsSubjects),
+        transferIn: createDefaultSubjectRecord(this.jhsSubjects),
       })
     } else {
       this.shsRecords.push({
         id: Date.now().toString(),
         schoolId: '',
         schoolName: name,
-        required: createDefaultSubjectRecord(SHS_SUBJECTS),
-        existing: createDefaultSubjectRecord(SHS_SUBJECTS),
-        transferOut: createDefaultSubjectRecord(SHS_SUBJECTS),
-        transferIn: createDefaultSubjectRecord(SHS_SUBJECTS),
+        required: createDefaultSubjectRecord(this.shsSubjects),
+        existing: createDefaultSubjectRecord(this.shsSubjects),
+        transferOut: createDefaultSubjectRecord(this.shsSubjects),
+        transferIn: createDefaultSubjectRecord(this.shsSubjects),
       })
     }
   },
@@ -372,7 +383,7 @@ export const tnaStore = reactive({
       return
     }
 
-    const subjects = (category === 'JHS' ? JHS_SUBJECTS : SHS_SUBJECTS) as string[]
+    const subjects = (category === 'JHS' ? this.jhsSubjects : this.shsSubjects) as string[]
     const schools = (category === 'JHS' ? this.jhsRecords : this.shsRecords) as {
       schoolName: string
       transferIn: Record<string, number>
@@ -466,9 +477,99 @@ export const tnaStore = reactive({
     this.deploymentRecords = this.deploymentRecords.filter(d => d.category !== category)
     this.syncTransfers(category)
   },
+
+  // ---------------------------------------------------------------------------
+  // Dynamic Subject Management (JHS & SHS)
+  // ---------------------------------------------------------------------------
+  getSubjectsForCategory(category: 'JHS' | 'SHS'): string[] {
+    return category === 'JHS' ? this.jhsSubjects : this.shsSubjects
+  },
+
+  addSubject(category: 'JHS' | 'SHS', rawName: string): { ok: boolean; name: string; message?: string } {
+    const clean = rawName.trim()
+    if (!clean) return { ok: false, name: '', message: 'Subject name cannot be empty.' }
+
+    const list = category === 'JHS' ? this.jhsSubjects : this.shsSubjects
+    const existing = list.find(s => s.toLowerCase() === clean.toLowerCase())
+    if (existing) {
+      return { ok: false, name: existing, message: `"${existing}" already exists in ${category}.` }
+    }
+
+    list.push(clean)
+    const records = category === 'JHS' ? this.jhsRecords : this.shsRecords
+    records.forEach(r => {
+      if (r.required[clean] === undefined) r.required[clean] = 0
+      if (r.existing[clean] === undefined) r.existing[clean] = 0
+      if (r.transferOut[clean] === undefined) r.transferOut[clean] = 0
+      if (r.transferIn[clean] === undefined) r.transferIn[clean] = 0
+    })
+    this.syncTransfers(category)
+    return { ok: true, name: clean }
+  },
+
+  removeSubject(category: 'JHS' | 'SHS', subjectName: string): boolean {
+    const list = category === 'JHS' ? this.jhsSubjects : this.shsSubjects
+    if (list.length <= 1) return false
+    const idx = list.findIndex(s => s === subjectName)
+    if (idx === -1) return false
+
+    list.splice(idx, 1)
+    const records = category === 'JHS' ? this.jhsRecords : this.shsRecords
+    records.forEach(r => {
+      delete r.required[subjectName]
+      delete r.existing[subjectName]
+      delete r.transferOut[subjectName]
+      delete r.transferIn[subjectName]
+    })
+    this.deploymentRecords = this.deploymentRecords.filter(
+      d => !(d.category === category && d.subject === subjectName)
+    )
+    this.syncTransfers(category)
+    return true
+  },
+
+  resetSubjectsToDefault(category: 'JHS' | 'SHS') {
+    const defaults = category === 'JHS' ? [...JHS_SUBJECTS] : [...SHS_SUBJECTS]
+    if (category === 'JHS') {
+      this.jhsSubjects = defaults
+    } else {
+      this.shsSubjects = defaults
+    }
+    this.normalizeAllIntegers()
+    this.syncTransfers(category)
+  },
+
+  normalizeAllIntegers() {
+    // Ensure MAPEH is always present in shsSubjects if upgrading from an older version
+    if (!this.shsSubjects.some(s => s.toLowerCase() === 'mapeh')) {
+      const filIdx = this.shsSubjects.findIndex(s => s.toLowerCase() === 'filipino')
+      if (filIdx !== -1) this.shsSubjects.splice(filIdx + 1, 0, 'MAPEH')
+      else this.shsSubjects.push('MAPEH')
+    }
+
+    this.esRecords.forEach(r => {
+      r.required = Math.round(Number(r.required) || 0)
+      r.existing = Math.round(Number(r.existing) || 0)
+      r.transferOut = Math.round(Number(r.transferOut) || 0)
+      r.transferIn = Math.round(Number(r.transferIn) || 0)
+    })
+    this.jhsRecords.forEach(r => {
+      this.jhsSubjects.forEach(s => {
+        r.required[s] = Math.round(Number(r.required?.[s]) || 0)
+        r.existing[s] = Math.round(Number(r.existing?.[s]) || 0)
+      })
+    })
+    this.shsRecords.forEach(r => {
+      this.shsSubjects.forEach(s => {
+        r.required[s] = Math.round(Number(r.required?.[s]) || 0)
+        r.existing[s] = Math.round(Number(r.existing?.[s]) || 0)
+      })
+    })
+  },
 })
 
-// Transfer In / Transfer Out always come from the Deployment list
+// Normalize any previously saved decimals to whole integers & sync transfers
+tnaStore.normalizeAllIntegers()
 tnaStore.syncAllTransfers()
 
 // Persistence watcher
@@ -513,6 +614,30 @@ watch(
   (val) => {
     try {
       localStorage.setItem(DEPLOYMENT_STORAGE_KEY, JSON.stringify(val))
+    } catch (e) {
+      console.error(e)
+    }
+  },
+  { deep: true }
+)
+
+watch(
+  () => tnaStore.jhsSubjects,
+  (val) => {
+    try {
+      localStorage.setItem(JHS_SUBJECTS_STORAGE_KEY, JSON.stringify(val))
+    } catch (e) {
+      console.error(e)
+    }
+  },
+  { deep: true }
+)
+
+watch(
+  () => tnaStore.shsSubjects,
+  (val) => {
+    try {
+      localStorage.setItem(SHS_SUBJECTS_STORAGE_KEY, JSON.stringify(val))
     } catch (e) {
       console.error(e)
     }
