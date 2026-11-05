@@ -1,11 +1,15 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { tnaStore } from '../stores/tnaStore'
 import { type CategoryType } from '../types/tna'
 
 const router = useRouter()
 const levelFilter = ref<'ALL' | CategoryType>('ALL')
+
+onMounted(() => {
+  tnaStore.loadFromDatabase()
+})
 
 interface UnifiedSchoolRow {
   id: string
@@ -1066,5 +1070,56 @@ const recentDeployments = computed(() =>
 }
 .font-semibold {
   font-weight: 600;
+}
+
+/* Responsive Breakpoints for Mobile Phones & Tablets */
+@media (max-width: 1024px) {
+  .kpi-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .level-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .dashboard-view {
+    gap: 1rem;
+    padding-bottom: 1.5rem;
+  }
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.65rem;
+  }
+  .level-grid {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+  .analytics-double-grid {
+    grid-template-columns: 1fr;
+    gap: 0.85rem;
+  }
+  .analytics-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.65rem;
+  }
+  .analytics-filters {
+    width: 100%;
+    overflow-x: auto;
+  }
+  .panel-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .kpi-val {
+    font-size: 1.35rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .kpi-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

@@ -149,45 +149,37 @@ function deleteRecord(id: string, name: string) {
 }
 
 function handleImport(importedData: ParsedImportRow[]) {
-  importedData.forEach((row) => {
-    const rowName = String(row.schoolName || '').trim().toLowerCase()
+  const freshRecords: JhsRecord[] = []
+  importedData.forEach((row, idx) => {
+    const rowName = String(row.schoolName || '').trim()
     const rowId = String(row.schoolId || '').trim()
-    const existingIdx = tnaStore.jhsRecords.findIndex((r) => {
-      if (rowName) return r.schoolName.trim().toLowerCase() === rowName
-      return rowId !== '' && r.schoolId.trim() === rowId
-    })
+    if (!rowName && !rowId) return
 
-    if (existingIdx !== -1 && tnaStore.jhsRecords[existingIdx]) {
-      const cur = tnaStore.jhsRecords[existingIdx]!
-      if (rowId) cur.schoolId = rowId
-      if (row.requiredBySubject && row.existingBySubject) {
-        tnaStore.jhsSubjects.forEach((s) => {
-          cur.required[s] = Math.round(Number(row.requiredBySubject![s]) || 0)
-          cur.existing[s] = Math.round(Number(row.existingBySubject![s]) || 0)
-        })
-      } else if (row.required !== undefined) {
-        const firstSubj = tnaStore.jhsSubjects[0] || 'Filipino'
-        cur.required[firstSubj] = Math.round(Number(row.required) || 0) || (cur.required[firstSubj] ?? 0)
-      }
-    } else if (rowName || rowId) {
-      const fresh = initForm()
-      fresh.schoolId = rowId
-      fresh.schoolName = String(row.schoolName || 'Unnamed JHS').trim()
-      if (row.requiredBySubject && row.existingBySubject) {
-        tnaStore.jhsSubjects.forEach((s) => {
-          fresh.required[s] = Math.round(Number(row.requiredBySubject![s]) || 0)
-          fresh.existing[s] = Math.round(Number(row.existingBySubject![s]) || 0)
-        })
-      } else {
-        const firstSubj = tnaStore.jhsSubjects[0] || 'Filipino'
-        fresh.required[firstSubj] = Math.round(Number(row.required) || 0)
-        fresh.existing[firstSubj] = Math.round(Number(row.existing) || 0)
-      }
-      tnaStore.addJhsRecord(fresh)
+    const fresh = initForm()
+    fresh.schoolId = rowId
+    fresh.schoolName = rowName || 'Unnamed JHS'
+    if (row.requiredBySubject && row.existingBySubject) {
+      tnaStore.jhsSubjects.forEach((s) => {
+        fresh.required[s] = Math.round(Number(row.requiredBySubject![s]) || 0)
+        fresh.existing[s] = Math.round(Number(row.existingBySubject![s]) || 0)
+      })
+    } else {
+      const firstSubj = tnaStore.jhsSubjects[0] || 'Filipino'
+      fresh.required[firstSubj] = Math.round(Number(row.required) || 0)
+      fresh.existing[firstSubj] = Math.round(Number(row.existing) || 0)
     }
+    freshRecords.push({
+      ...fresh,
+      id: `${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
+    })
   })
-  tnaStore.deduplicateSchools()
-  tnaStore.clearDeploymentsByCategory('JHS')
+
+  if (freshRecords.length > 0) {
+    tnaStore.jhsRecords = freshRecords
+    tnaStore.deduplicateSchools()
+    tnaStore.clearDeploymentsByCategory('JHS')
+    tnaStore.syncToDatabase()
+  }
 }
 
 function resetToDefault() {
@@ -1420,5 +1412,56 @@ input:disabled {
   display: flex;
   justify-content: flex-end;
   gap: 0.75rem;
+}
+
+/* Mobile Responsive Adjustments */
+@media (max-width: 1024px) {
+  .metrics-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.65rem;
+  }
+  .toolbar-box {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+  .toolbar-left {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.65rem;
+  }
+  .search-input-wrap {
+    width: 100%;
+  }
+  .filter-group,
+  .view-mode-group {
+    width: 100%;
+    overflow-x: auto;
+  }
+  .toolbar-right {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .modal-card {
+    max-width: 95vw;
+    margin: 0.5rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .metrics-grid {
+    grid-template-columns: 1fr;
+  }
+  .toolbar-right .btn {
+    flex: 1 1 calc(50% - 0.5rem);
+    font-size: 0.78rem;
+    padding: 0.45rem 0.5rem;
+  }
 }
 </style>

@@ -838,5 +838,38 @@ function remove(d: DeploymentRecord) {
   font-size: 0.8rem;
   font-weight: 600;
 }
+
+/* Mobile Responsive Adjustments */
+@media (max-width: 768px) {
+  .toolbar-box {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+  .toolbar-left {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.65rem;
+  }
+  .search-wrap {
+    width: 100%;
+  }
+  .filter-group {
+    width: 100%;
+    overflow-x: auto;
+  }
+  .toolbar-right {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .form-row {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .modal-card {
+    max-width: 95vw;
+    margin: 0.5rem;
+  }
+}
 </style>
 

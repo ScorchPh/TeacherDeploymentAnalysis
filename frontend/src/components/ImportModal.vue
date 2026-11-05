@@ -580,4 +580,29 @@ function closeModal() {
   gap: 0.75rem;
   background-color: #f8fafc;
 }
+
+@media (max-width: 640px) {
+  .modal-overlay {
+    padding: 0.5rem;
+  }
+  .modal-box {
+    max-width: 100%;
+    max-height: 96vh;
+  }
+  .modal-header,
+  .modal-body,
+  .modal-footer {
+    padding: 0.85rem 1rem;
+  }
+  .template-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+  .template-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+}
 </style>

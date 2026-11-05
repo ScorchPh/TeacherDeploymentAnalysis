@@ -10,14 +10,7 @@ import type {
 } from '../types/tna'
 import { JHS_SUBJECTS, SHS_SUBJECTS } from '../types/tna'
 
-const ES_STORAGE_KEY = 'tna_es_records_v1'
-const JHS_STORAGE_KEY = 'tna_jhs_records_v1'
-const SHS_STORAGE_KEY = 'tna_shs_records_v2'
-const DEPLOYMENT_STORAGE_KEY = 'tna_deployment_records_v1'
-const JHS_SUBJECTS_STORAGE_KEY = 'tna_jhs_subjects_v1'
-const SHS_SUBJECTS_STORAGE_KEY = 'tna_shs_subjects_v1'
-
-// Initial ES Data from DepEd Lapu-Lapu City files
+// Initial ES Data from DepEd Lapu-Lapu City files (seed fallback for empty database)
 const initialEsData: EsRecord[] = [
   { id: '1', schoolId: '119964', schoolName: 'Buaya ES', required: 55, existing: 51, transferOut: 2, transferIn: 1 },
   { id: '2', schoolId: '119966', schoolName: 'Babag II ES', required: 51, existing: 43, transferOut: 0, transferIn: 2 },
@@ -122,23 +115,20 @@ const initialShsData: ShsRecord[] = [
   },
 ]
 
-function loadStored<T>(key: string, fallback: T[]): T[] {
-  try {
-    const raw = localStorage.getItem(key)
-    if (raw) return JSON.parse(raw)
-  } catch (e) {
-    console.error(`Failed to load ${key}:`, e)
-  }
-  return fallback
-}
-
 export const tnaStore = reactive({
-  jhsSubjects: loadStored<string>(JHS_SUBJECTS_STORAGE_KEY, [...JHS_SUBJECTS]),
-  shsSubjects: loadStored<string>(SHS_SUBJECTS_STORAGE_KEY, [...SHS_SUBJECTS]),
-  esRecords: loadStored<EsRecord>(ES_STORAGE_KEY, initialEsData),
-  jhsRecords: loadStored<JhsRecord>(JHS_STORAGE_KEY, initialJhsData),
-  shsRecords: loadStored<ShsRecord>(SHS_STORAGE_KEY, initialShsData),
-  deploymentRecords: loadStored<DeploymentRecord>(DEPLOYMENT_STORAGE_KEY, []),
+  isLoading: true,
+  isSaving: false,
+  dbStatus: 'connecting' as 'connecting' | 'connected' | 'offline' | 'error',
+  dbMessage: 'Connecting to database...',
+  dbName: '',
+  lastSyncedAt: '',
+  schoolYear: '2025–2026',
+  jhsSubjects: [...JHS_SUBJECTS] as string[],
+  shsSubjects: [...SHS_SUBJECTS] as string[],
+  esRecords: [] as EsRecord[],
+  jhsRecords: [] as JhsRecord[],
+  shsRecords: [] as ShsRecord[],
+  deploymentRecords: [] as DeploymentRecord[],
 
   // Calculation helpers for ES
   calcEsGap(r: EsRecord): number {
@@ -270,38 +260,29 @@ export const tnaStore = reactive({
     this.shsRecords = this.shsRecords.filter(r => r.id !== id)
   },
 
-  // Batch import for ES
+  // Batch import for ES (replaces old ES records with the fresh import)
   importEsRecords(records: Partial<EsRecord>[]) {
-    records.forEach(row => {
-      const rowName = String(row.schoolName || '').trim().toLowerCase()
+    const freshList: EsRecord[] = []
+    records.forEach((row, idx) => {
+      const rowName = String(row.schoolName || '').trim()
       const rowId = String(row.schoolId || '').trim()
-      const existingIdx = this.esRecords.findIndex(r => {
-        if (rowName) {
-          return r.schoolName.trim().toLowerCase() === rowName
-        }
-        return rowId !== '' && r.schoolId.trim() === rowId
+      if (!rowName && !rowId) return
+      freshList.push({
+        id: `${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
+        schoolId: rowId,
+        schoolName: rowName || 'Unnamed School',
+        required: Math.round(Number(row.required) || 0),
+        existing: Math.round(Number(row.existing) || 0),
+        transferOut: 0,
+        transferIn: 0,
       })
-
-      if (existingIdx !== -1 && this.esRecords[existingIdx]) {
-        // Update existing record
-        const cur = this.esRecords[existingIdx]
-        if (rowId) cur.schoolId = rowId
-        if (row.required !== undefined) cur.required = Math.round(Number(row.required) || 0)
-        if (row.existing !== undefined) cur.existing = Math.round(Number(row.existing) || 0)
-      } else if (rowName || rowId) {
-        // Insert new record
-        this.addEsRecord({
-          schoolId: rowId,
-          schoolName: String(row.schoolName || 'Unnamed School').trim(),
-          required: Math.round(Number(row.required) || 0),
-          existing: Math.round(Number(row.existing) || 0),
-          transferOut: 0,
-          transferIn: 0,
-        })
-      }
     })
-    this.deduplicateSchools()
-    this.clearDeploymentsByCategory('ES')
+    if (freshList.length > 0) {
+      this.esRecords = freshList
+      this.deduplicateSchools()
+      this.clearDeploymentsByCategory('ES')
+      this.syncToDatabase()
+    }
   },
 
   // Reset to initial data
@@ -594,82 +575,201 @@ export const tnaStore = reactive({
       })
     })
   },
+
+  // ---------------------------------------------------------------------------
+  // Central Database Synchronization (MySQL Server Backend via api.php)
+  // ---------------------------------------------------------------------------
+  async syncToDatabase(): Promise<boolean> {
+    if (isApplyingRemote) return false
+    this.isSaving = true
+    const payload = {
+      schoolYear: this.schoolYear,
+      jhsSubjects: this.jhsSubjects,
+      shsSubjects: this.shsSubjects,
+      esRecords: this.esRecords,
+      jhsRecords: this.jhsRecords,
+      shsRecords: this.shsRecords,
+      deploymentRecords: this.deploymentRecords,
+    }
+
+    const candidates = getApiCandidates()
+    for (const url of candidates) {
+      try {
+        const res = await fetch(`${url}?action=sync`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        if (!res.ok) {
+          const errData = await res.json().catch(() => null)
+          console.error('[TNA Sync Error]', res.status, errData?.message || res.statusText)
+          continue
+        }
+        const json = await res.json()
+        if (json && json.status === 'success') {
+          resolvedApiUrl = url
+          this.dbStatus = 'connected'
+          this.dbName = json.database_name || 'MySQL'
+          this.dbMessage = `Synced with Database (${this.dbName})`
+          this.lastSyncedAt = new Date().toLocaleTimeString()
+          this.isSaving = false
+          return true
+        }
+      } catch {
+        // Try next candidate URL
+      }
+    }
+    this.dbStatus = 'offline'
+    this.dbMessage = 'Database unreachable'
+    this.isSaving = false
+    return false
+  },
+
+  async loadFromDatabase(): Promise<boolean> {
+    this.isLoading = true
+    const candidates = getApiCandidates()
+    for (const url of candidates) {
+      try {
+        const res = await fetch(`${url}?action=load`, {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+        })
+        if (!res.ok) continue
+        const json = await res.json()
+        if (json && json.status === 'success' && json.data) {
+          resolvedApiUrl = url
+          this.dbStatus = 'connected'
+          this.dbName = json.database_name || 'MySQL'
+          this.dbMessage = `Connected to ${this.dbName}`
+          this.lastSyncedAt = new Date().toLocaleTimeString()
+
+          isApplyingRemote = true
+          try {
+            if (typeof json.data.schoolYear === 'string' && json.data.schoolYear.trim()) {
+              this.schoolYear = json.data.schoolYear.trim()
+            }
+            if (Array.isArray(json.data.jhsSubjects) && json.data.jhsSubjects.length > 0) {
+              this.jhsSubjects = json.data.jhsSubjects
+            }
+            if (Array.isArray(json.data.shsSubjects) && json.data.shsSubjects.length > 0) {
+              this.shsSubjects = json.data.shsSubjects
+            }
+            if (Array.isArray(json.data.esRecords)) {
+              this.esRecords = json.data.esRecords
+            }
+            if (Array.isArray(json.data.jhsRecords)) {
+              this.jhsRecords = json.data.jhsRecords
+            }
+            if (Array.isArray(json.data.shsRecords)) {
+              this.shsRecords = json.data.shsRecords
+            }
+            if (Array.isArray(json.data.deploymentRecords)) {
+              this.deploymentRecords = json.data.deploymentRecords
+            }
+            this.normalizeAllIntegers()
+            this.syncAllTransfers()
+          } finally {
+            setTimeout(() => {
+              isApplyingRemote = false
+            }, 200)
+          }
+          this.isLoading = false
+          return true
+        }
+      } catch {
+        // Try next candidate URL
+      }
+    }
+    this.dbStatus = 'offline'
+    this.dbMessage = 'Server database unreachable'
+    this.isLoading = false
+    return false
+  },
 })
+
+let isApplyingRemote = false
+let resolvedApiUrl: string | null = null
+let syncTimer: ReturnType<typeof setTimeout> | null = null
+
+function getApiCandidates(): string[] {
+  if (resolvedApiUrl) return [resolvedApiUrl]
+  const isLocal =
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+  if (isLocal) {
+    return ['http://localhost:8000/api.php', '/backend/api.php', '/api.php']
+  }
+  return ['/backend/api.php', '/api.php']
+}
+
+function scheduleSyncToDatabase() {
+  if (isApplyingRemote) return
+  if (syncTimer) clearTimeout(syncTimer)
+  syncTimer = setTimeout(() => {
+    tnaStore.syncToDatabase()
+  }, 400)
+}
 
 // Normalize any previously saved decimals to whole integers & sync transfers
 tnaStore.normalizeAllIntegers()
 tnaStore.syncAllTransfers()
+if (typeof window !== 'undefined') {
+  tnaStore.loadFromDatabase()
+}
 
-// Persistence watcher
+// Watchers triggering central database sync (no localStorage)
 watch(
   () => tnaStore.esRecords,
-  (val) => {
-    try {
-      localStorage.setItem(ES_STORAGE_KEY, JSON.stringify(val))
-    } catch (e) {
-      console.error(e)
-    }
+  () => {
+    scheduleSyncToDatabase()
   },
   { deep: true }
 )
 
 watch(
   () => tnaStore.jhsRecords,
-  (val) => {
-    try {
-      localStorage.setItem(JHS_STORAGE_KEY, JSON.stringify(val))
-    } catch (e) {
-      console.error(e)
-    }
+  () => {
+    scheduleSyncToDatabase()
   },
   { deep: true }
 )
 
 watch(
   () => tnaStore.shsRecords,
-  (val) => {
-    try {
-      localStorage.setItem(SHS_STORAGE_KEY, JSON.stringify(val))
-    } catch (e) {
-      console.error(e)
-    }
+  () => {
+    scheduleSyncToDatabase()
   },
   { deep: true }
 )
 
 watch(
   () => tnaStore.deploymentRecords,
-  (val) => {
-    try {
-      localStorage.setItem(DEPLOYMENT_STORAGE_KEY, JSON.stringify(val))
-    } catch (e) {
-      console.error(e)
-    }
+  () => {
+    scheduleSyncToDatabase()
   },
   { deep: true }
 )
 
 watch(
   () => tnaStore.jhsSubjects,
-  (val) => {
-    try {
-      localStorage.setItem(JHS_SUBJECTS_STORAGE_KEY, JSON.stringify(val))
-    } catch (e) {
-      console.error(e)
-    }
+  () => {
+    scheduleSyncToDatabase()
   },
   { deep: true }
 )
 
 watch(
   () => tnaStore.shsSubjects,
-  (val) => {
-    try {
-      localStorage.setItem(SHS_SUBJECTS_STORAGE_KEY, JSON.stringify(val))
-    } catch (e) {
-      console.error(e)
-    }
+  () => {
+    scheduleSyncToDatabase()
   },
   { deep: true }
+)
+
+watch(
+  () => tnaStore.schoolYear,
+  () => {
+    scheduleSyncToDatabase()
+  }
 )
 

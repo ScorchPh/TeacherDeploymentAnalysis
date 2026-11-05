@@ -37,14 +37,30 @@ function loadEnv(string $filePath): void
     }
 }
 
-// Load .env from the same directory
-loadEnv(__DIR__ . '/.env');
+// Load .env from the same directory or parent/backend directory
+$envCandidates = [
+    __DIR__ . '/.env',
+    dirname(__DIR__) . '/.env',
+    __DIR__ . '/backend/.env',
+    dirname(__DIR__) . '/backend/.env',
+];
+$envLoaded = false;
+foreach ($envCandidates as $candidate) {
+    if (file_exists($candidate)) {
+        loadEnv($candidate);
+        $envLoaded = true;
+        break;
+    }
+}
+if (!$envLoaded) {
+    loadEnv(__DIR__ . '/.env');
+}
 
 // Retrieve database credentials
 $host     = $_ENV['DB_HOST'] ?? getenv('DB_HOST') ?? 'localhost';
 $dbName   = $_ENV['DB_NAME'] ?? getenv('DB_NAME') ?? 'tna';
 $user     = $_ENV['DB_USER'] ?? getenv('DB_USER') ?? 'root';
-$password = $_ENV['DB_PASSWORD'] ?? getenv('DB_PASSWORD') ?? '';
+$password = $_ENV['DB_PASSWORD'] ?? $_ENV['DB_PASS'] ?? getenv('DB_PASSWORD') ?? getenv('DB_PASS') ?? '';
 $charset  = 'utf8mb4';
 
 // Data Source Name
@@ -56,40 +72,54 @@ $options = [
     PDO::ATTR_EMULATE_PREPARES   => false,
 ];
 
+$pdo = null;
 try {
     $pdo = new PDO($dsn, $user, $password, $options);
-
-    // Auto-heal / Ensure required columns exist on sheets table across any hosting
-    try {
-        $sheetsCheck = $pdo->query("SHOW COLUMNS FROM sheets LIKE 'column_types_json'");
-        if ($sheetsCheck && $sheetsCheck->rowCount() === 0) {
-            $pdo->exec("ALTER TABLE sheets ADD COLUMN column_types_json JSON NULL AFTER columns_json");
+} catch (PDOException $firstErr) {
+    // Fallback 1: Try depedlapulapu_tna if DB_NAME in .env was set to TNA on Plesk hosting
+    if ($dbName !== 'depedlapulapu_tna') {
+        try {
+            $fallbackDb = 'depedlapulapu_tna';
+            $fallbackDsn = "mysql:host={$host};dbname={$fallbackDb};charset={$charset}";
+            $pdo = new PDO($fallbackDsn, $user, $password, $options);
+            $dbName = $fallbackDb;
+            $_ENV['DB_NAME'] = $dbName;
+        } catch (PDOException $ignored) {
         }
-        $optionsCheck = $pdo->query("SHOW COLUMNS FROM sheets LIKE 'column_options_json'");
-        if ($optionsCheck && $optionsCheck->rowCount() === 0) {
-            $pdo->exec("ALTER TABLE sheets ADD COLUMN column_options_json TEXT NULL AFTER column_types_json");
-        }
-    } catch (\Throwable $ignored) {
     }
-} catch (PDOException $e) {
-    // If run from CLI, print error; otherwise, return a 500 JSON response
-    if (php_sapi_name() === 'cli') {
-        echo "Database connection failed: " . $e->getMessage() . PHP_EOL;
-        exit(1);
-    } else {
-        http_response_code(500);
-        header('Access-Control-Allow-Origin: *');
-        header('Content-Type: application/json');
-        echo json_encode([
-            'status'  => 'error',
-            'message' => 'Database connection failed: ' . $e->getMessage()
-        ]);
-        exit;
+
+    // Fallback 2: Auto-create database if MySQL server is reachable but DB does not exist yet
+    if ($pdo === null) {
+        try {
+            $serverPdo = new PDO("mysql:host={$host};charset={$charset}", $user, $password, $options);
+            $safeDb = preg_replace('/[^a-zA-Z0-9_]/', '', $dbName) ?: 'TNA';
+            $serverPdo->exec("CREATE DATABASE IF NOT EXISTS `{$safeDb}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+            $pdo = new PDO("mysql:host={$host};dbname={$safeDb};charset={$charset}", $user, $password, $options);
+            $dbName = $safeDb;
+            $_ENV['DB_NAME'] = $dbName;
+        } catch (PDOException $ignored) {
+        }
+    }
+
+    if ($pdo === null && empty($GLOBALS['TNA_ALLOW_DB_FALLBACK'])) {
+        if (php_sapi_name() === 'cli') {
+            echo "Database connection failed: " . $firstErr->getMessage() . PHP_EOL;
+            exit(1);
+        } else {
+            http_response_code(500);
+            header('Access-Control-Allow-Origin: *');
+            header('Content-Type: application/json');
+            echo json_encode([
+                'status'  => 'error',
+                'message' => 'Database connection failed: ' . $firstErr->getMessage()
+            ]);
+            exit;
+        }
     }
 }
 
 // Function to get the PDO instance
-function getDbConnection(): PDO
+function getDbConnection(): ?PDO
 {
     global $pdo;
     return $pdo;

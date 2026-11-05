@@ -120,6 +120,7 @@ CREATE TABLE `deployments` (
   `current_position` VARCHAR(100) NOT NULL DEFAULT 'TEACHER I',
   `date_added` DATE NOT NULL,
   `transfer_type` ENUM('IN','OUT') NOT NULL DEFAULT 'IN',
+  `remarks` VARCHAR(255) DEFAULT NULL COMMENT 'Optional notes or division remarks',
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -301,4 +302,41 @@ INSERT INTO `shs_subject_needs` (`shs_school_id`, `subject`, `required`, `existi
   (3, 'TVL-HE',   3,  6, 0, 0),
   (3, 'TVL-IA',   3,  7, 0, 0),
   (3, 'TVL-ICT',  3,  3, 0, 0);
+
+-- ============================================================================
+-- 10. SYSTEM SETTINGS TABLE (School Year & Dynamic Subjects)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS `tna_settings` (
+  `setting_key` VARCHAR(64) NOT NULL,
+  `setting_value` TEXT NOT NULL,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`setting_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO `tna_settings` (`setting_key`, `setting_value`) VALUES
+  ('school_year', '2025–2026'),
+  ('is_synced', '1')
+ON DUPLICATE KEY UPDATE `setting_value` = VALUES(`setting_value`);
+
+-- ============================================================================
+-- 11. AUTHORIZED USERS & STAFF TABLE (Admin & Staff Officer Access)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS `tna_users` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `email` VARCHAR(150) NOT NULL UNIQUE,
+  `name` VARCHAR(150) NOT NULL,
+  `role` VARCHAR(50) NOT NULL DEFAULT 'Staff Officer',
+  `avatar` VARCHAR(255) DEFAULT NULL,
+  `google_sub` VARCHAR(100) DEFAULT NULL,
+  `session_token` VARCHAR(64) DEFAULT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Primary Default Administrator
+INSERT INTO `tna_users` (`email`, `name`, `role`) VALUES
+  ('johnong07242004@gmail.com', 'John Ong (Administrator)', 'Admin')
+ON DUPLICATE KEY UPDATE `role` = 'Admin';
+
 

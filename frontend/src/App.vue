@@ -1,9 +1,18 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import DesktopLayout from './components/DesktopLayout.vue'
+
+const route = useRoute()
+const isLoginPage = computed(() => route.name === 'login' || route.path === '/login' || route.path.startsWith('/login/'))
 </script>
 
 <template>
-  <DesktopLayout />
+  <!-- Isolated, full-screen standalone login page (No sidebar, no navbar) -->
+  <RouterView v-if="isLoginPage" />
+
+  <!-- Authenticated application layout with sidebar & top navbar -->
+  <DesktopLayout v-else />
 </template>
 
 <style>

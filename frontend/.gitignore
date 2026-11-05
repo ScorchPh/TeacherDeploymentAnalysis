@@ -11,6 +11,10 @@ node_modules
 .DS_Store
 dist
 dist-ssr
+release/
+win-unpacked/
+*.exe
+*.zip
 coverage
 *.local
 

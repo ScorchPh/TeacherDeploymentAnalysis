@@ -1,5 +1,13 @@
-﻿node_modules/
+node_modules/
 dist/
+dist-ssr/
 .env
 .env.local
 .eslintcache
+
+# Build & Release packages (exceeds GitHub limits)
+release/
+frontend/release/
+win-unpacked/
+*.exe
+*.zip
