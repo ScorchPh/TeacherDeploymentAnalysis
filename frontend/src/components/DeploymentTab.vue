@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { tnaStore } from '../stores/tnaStore'
-import { exportDeploymentsExcel } from '../utils/excelTemplate'
+import { exportTransfersExcel } from '../utils/excelTemplate'
 import {
   type CategoryType,
   type DeploymentRecord,
-  type TransferType,
 } from '../types/tna'
 
 const props = defineProps<{
@@ -18,6 +17,9 @@ const POSITIONS = [
   'TEACHER III',
   'MASTER TEACHER I',
   'MASTER TEACHER II',
+  'SPECIAL EDUCATION TEACHER I',
+  'SPECIAL EDUCATION TEACHER II',
+  'HEAD TEACHER I',
 ]
 
 const hasSubject = computed(() => props.category !== 'ES')
@@ -30,8 +32,8 @@ const subjects = computed<string[]>(() =>
 )
 
 const searchQuery = ref('')
-const typeFilter = ref<'ALL' | TransferType>('ALL')
 const subjectFilter = ref('ALL')
+const schoolFilter = ref('ALL')
 
 const isModalOpen = ref(false)
 const editingId = ref<string | null>(null)
@@ -65,8 +67,8 @@ function emptyForm() {
     toSchoolName: '',
     currentPosition: 'TEACHER I',
     dateAdded: getTodayDate(),
-    transferType: 'IN' as TransferType,
     subject: '',
+    remarks: '',
   }
 }
 const form = ref(emptyForm())
@@ -75,12 +77,22 @@ const categoryRecords = computed(() =>
   tnaStore.deploymentRecords.filter((d) => d.category === props.category)
 )
 
+const schoolOptions = computed(() =>
+  tnaStore.getSchoolsForCategory(props.category).map((s) => s.schoolName)
+)
+
 const filteredRecords = computed(() => {
   const q = searchQuery.value.toLowerCase().trim()
   return categoryRecords.value.filter((d) => {
-    if (typeFilter.value !== 'ALL' && d.transferType !== typeFilter.value) return false
-    if (hasSubject.value && subjectFilter.value !== 'ALL' && d.subject !== subjectFilter.value)
+    if (schoolFilter.value !== 'ALL') {
+      const matchSchool =
+        d.schoolName.toLowerCase() === schoolFilter.value.toLowerCase() ||
+        (d.toSchoolName && d.toSchoolName.toLowerCase() === schoolFilter.value.toLowerCase())
+      if (!matchSchool) return false
+    }
+    if (hasSubject.value && subjectFilter.value !== 'ALL' && d.subject !== subjectFilter.value) {
       return false
+    }
     if (!q) return true
     return [
       d.lastName,
@@ -91,6 +103,7 @@ const filteredRecords = computed(() => {
       d.currentPosition,
       d.dateAdded,
       d.subject ?? '',
+      d.remarks ?? '',
     ]
       .join(' ')
       .toLowerCase()
@@ -98,20 +111,12 @@ const filteredRecords = computed(() => {
   })
 })
 
-const countIn = computed(() => categoryRecords.value.filter((d) => d.transferType === 'IN').length)
-const countOut = computed(() => categoryRecords.value.filter((d) => d.transferType === 'OUT').length)
-
-const schoolOptions = computed(() =>
-  tnaStore.getSchoolsForCategory(props.category).map((s) => s.schoolName)
-)
-
 const isNewSchool = computed(() => {
   const name = form.value.schoolName.trim().toLowerCase()
   return !!name && !schoolOptions.value.some((s) => s.trim().toLowerCase() === name)
 })
 
 const isNewToSchool = computed(() => {
-  if (form.value.transferType !== 'OUT') return false
   const name = form.value.toSchoolName.trim().toLowerCase()
   return !!name && !schoolOptions.value.some((s) => s.trim().toLowerCase() === name)
 })
@@ -134,8 +139,8 @@ function openEdit(d: DeploymentRecord) {
     toSchoolName: d.toSchoolName ?? '',
     currentPosition: d.currentPosition,
     dateAdded: d.dateAdded || getTodayDate(),
-    transferType: d.transferType,
     subject: d.subject ?? '',
+    remarks: d.remarks ?? '',
   }
   formError.value = ''
   isModalOpen.value = true
@@ -148,728 +153,897 @@ function save() {
     return
   }
   if (!f.schoolName.trim()) {
-    formError.value = f.transferType === 'OUT' ? 'From School is required.' : 'School is required.'
+    formError.value = 'From School (Releasing) is required.'
     return
   }
-  if (f.transferType === 'OUT') {
-    if (!f.toSchoolName.trim()) {
-      formError.value = 'To School (Transfer In destination) is required.'
-      return
-    }
-    if (f.schoolName.trim().toLowerCase() === f.toSchoolName.trim().toLowerCase()) {
-      formError.value = 'From School and To School cannot be the same school.'
-      return
-    }
+  if (!f.toSchoolName.trim()) {
+    formError.value = 'To School (Receiving) is required.'
+    return
   }
-  if (hasSubject.value && !f.subject) {
-    formError.value = 'Please select a subject.'
+  if (f.schoolName.trim().toLowerCase() === f.toSchoolName.trim().toLowerCase()) {
+    formError.value = 'From School and To School cannot be the same school.'
+    return
+  }
+  if (hasSubject.value && !f.subject.trim()) {
+    formError.value = 'Subject / Specialization is required.'
     return
   }
 
   const payload = {
     category: props.category,
-    lastName: f.lastName.trim(),
-    firstName: f.firstName.trim(),
-    middleName: f.middleName.trim(),
+    lastName: f.lastName.trim().toUpperCase(),
+    firstName: f.firstName.trim().toUpperCase(),
+    middleName: f.middleName.trim().toUpperCase(),
     schoolName: f.schoolName.trim(),
-    toSchoolName: f.transferType === 'OUT' ? f.toSchoolName.trim() : undefined,
+    toSchoolName: f.toSchoolName.trim(),
     currentPosition: f.currentPosition.trim(),
     dateAdded: f.dateAdded || getTodayDate(),
-    transferType: f.transferType,
-    subject: hasSubject.value ? (f.subject as DeploymentRecord['subject']) : undefined,
+    transferType: 'OUT' as const,
+    subject: hasSubject.value ? f.subject.trim() : undefined,
+    remarks: f.remarks.trim() || undefined,
   }
 
-  if (editingId.value) tnaStore.updateDeployment(editingId.value, payload)
-  else tnaStore.addDeployment(payload)
+  if (editingId.value) {
+    tnaStore.updateDeployment(editingId.value, payload)
+  } else {
+    tnaStore.addDeployment(payload)
+  }
 
   isModalOpen.value = false
 }
 
 function remove(d: DeploymentRecord) {
-  if (confirm(`Remove deployment record of "${d.firstName} ${d.lastName}"?`)) {
+  const fullName = `${d.lastName}, ${d.firstName}`
+  if (
+    confirm(
+      `Remove transfer record for "${fullName}" (${d.schoolName} ➔ ${d.toSchoolName})?\n\nThis will adjust both schools' Transfer Out and Transfer In counts.`
+    )
+  ) {
     tnaStore.deleteDeployment(d.id)
   }
+}
+
+function handleExportExcel() {
+  exportTransfersExcel(props.category)
 }
 </script>
 
 <template>
-  <div class="deployment-tab">
+  <div class="transfers-tab">
     <!-- Toolbar -->
-    <div class="toolbar-box">
-      <div class="toolbar-left">
-        <div class="search-input-wrap">
-          <span class="search-icon">🔍</span>
-          <input
-            v-model="searchQuery"
-            type="text"
-            placeholder="Search name, school, position, date..."
-            class="search-input"
-          />
-          <button v-if="searchQuery" class="clear-btn" @click="searchQuery = ''">✕</button>
-        </div>
-
-        <div class="filter-group">
-          <button class="filter-pill" :class="{ active: typeFilter === 'ALL' }" @click="typeFilter = 'ALL'">
-            All ({{ categoryRecords.length }})
-          </button>
-          <button class="filter-pill pill-in" :class="{ active: typeFilter === 'IN' }" @click="typeFilter = 'IN'">
-            Transfer In ({{ countIn }})
-          </button>
-          <button class="filter-pill pill-out" :class="{ active: typeFilter === 'OUT' }" @click="typeFilter = 'OUT'">
-            Transfer Out ({{ countOut }})
-          </button>
-        </div>
-
-        <div v-if="hasSubject" class="subject-select-wrap">
-          <label>Subject:</label>
-          <select v-model="subjectFilter" class="subject-select">
-            <option value="ALL">All Subjects</option>
-            <option v-for="s in subjects" :key="s" :value="s">{{ s }}</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="toolbar-right">
-        <button class="btn btn-secondary" title="Download Excel backup of deployment records" @click="exportDeploymentsExcel(category)">
-          💾 Export Excel
+    <div class="tab-toolbar">
+      <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input
+          v-model="searchQuery"
+          type="text"
+          placeholder="Search name, school, position, remarks..."
+          class="search-input"
+        />
+        <button
+          v-if="searchQuery"
+          class="search-clear"
+          title="Clear search"
+          @click="searchQuery = ''"
+        >
+          ✕
         </button>
-        <button class="btn btn-primary" @click="openAdd">➕ Add Deployment</button>
+      </div>
+
+      <!-- School Filter -->
+      <div class="filter-item">
+        <label class="filter-lbl">School:</label>
+        <select v-model="schoolFilter" class="select-input">
+          <option value="ALL">All Schools ({{ categoryRecords.length }})</option>
+          <option v-for="s in schoolOptions" :key="s" :value="s">{{ s }}</option>
+        </select>
+      </div>
+
+      <!-- Subject Filter (JHS & SHS only) -->
+      <div v-if="hasSubject" class="filter-item">
+        <label class="filter-lbl">Subject:</label>
+        <select v-model="subjectFilter" class="select-input">
+          <option value="ALL">All Subjects</option>
+          <option v-for="s in subjects" :key="s" :value="s">{{ s }}</option>
+        </select>
+      </div>
+
+      <div class="toolbar-actions">
+        <button class="btn btn-secondary" @click="handleExportExcel" title="Export Transfers to Excel">
+          📊 Export Transfers
+        </button>
+        <button class="btn btn-primary" @click="openAdd">
+          🔄 Record Transfer
+        </button>
       </div>
     </div>
 
-    <!-- Table -->
-    <div class="table-container">
-      <div class="table-responsive">
-        <table class="deploy-table">
-          <thead>
-            <tr>
-              <th rowspan="2" class="col-no">No.</th>
-              <th colspan="3" class="group-head">Name of Applicant</th>
-              <th rowspan="2">School</th>
-              <th v-if="hasSubject" rowspan="2">Subject</th>
-              <th rowspan="2">Current Position</th>
-              <th rowspan="2">Date Added</th>
-              <th rowspan="2" class="col-center">Transfer</th>
-              <th rowspan="2" class="col-center">Actions</th>
-            </tr>
-            <tr>
-              <th class="sub-head">Last Name</th>
-              <th class="sub-head">First Name</th>
-              <th class="sub-head">Middle Name</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(d, i) in filteredRecords" :key="d.id">
-              <td class="col-no">{{ i + 1 }}</td>
-              <td class="font-bold">{{ d.lastName }}</td>
-              <td>{{ d.firstName }}</td>
-              <td>{{ d.middleName || '—' }}</td>
-              <td class="font-semibold">
-                <template v-if="d.transferType === 'OUT' && d.toSchoolName">
-                  <div class="school-route">
-                    <span class="school-from" title="Transferred Out From">{{ d.schoolName }}</span>
-                    <span class="route-arrow">→</span>
-                    <span class="school-to" title="Transferred In To">{{ d.toSchoolName }}</span>
-                  </div>
-                </template>
-                <template v-else>
-                  {{ d.schoolName }}
-                </template>
-              </td>
-              <td v-if="hasSubject"><span class="subject-chip">{{ d.subject || '—' }}</span></td>
-              <td>{{ d.currentPosition || '—' }}</td>
-              <td class="text-muted">{{ formatDate(d.dateAdded) }}</td>
-              <td class="col-center">
-                <span class="badge" :class="d.transferType === 'IN' ? 'badge-in' : 'badge-out'">
-                  {{ d.transferType === 'IN' ? '⬇ Transfer In' : '⬆ Transfer Out' }}
+    <!-- Transfers Table -->
+    <div class="table-card">
+      <table class="transfers-table">
+        <thead>
+          <tr>
+            <th class="col-no">NO.</th>
+            <th class="col-name">NAME OF TEACHER</th>
+            <th class="col-from">FROM SCHOOL (RELEASED)</th>
+            <th class="col-arrow"></th>
+            <th class="col-to">TO SCHOOL (RECEIVED)</th>
+            <th v-if="hasSubject" class="col-subj">SUBJECT / TRACK</th>
+            <th class="col-pos">POSITION</th>
+            <th class="col-date">DATE EFFECTIVE</th>
+            <th class="col-remarks">REMARKS</th>
+            <th class="col-actions">ACTIONS</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="(d, idx) in filteredRecords" :key="d.id">
+            <td class="col-no">{{ idx + 1 }}</td>
+            <td class="col-name">
+              <div class="name-box">
+                <span class="name-last">{{ d.lastName }},</span>
+                <span class="name-first">{{ d.firstName }}</span>
+                <span v-if="d.middleName" class="name-mid">{{ d.middleName }}</span>
+              </div>
+            </td>
+            <td class="col-from">
+              <div class="school-tag tag-out" title="Releasing School (+1 Transfer Out)">
+                <span class="tag-badge">OUT</span>
+                <span class="tag-name">{{ d.schoolName }}</span>
+              </div>
+            </td>
+            <td class="col-arrow">➔</td>
+            <td class="col-to">
+              <div class="school-tag tag-in" title="Receiving School (+1 Transfer In)">
+                <span class="tag-badge">IN</span>
+                <span class="tag-name">{{ d.toSchoolName || '—' }}</span>
+              </div>
+            </td>
+            <td v-if="hasSubject" class="col-subj">
+              <span class="subj-badge">{{ d.subject || '—' }}</span>
+            </td>
+            <td class="col-pos">{{ d.currentPosition }}</td>
+            <td class="col-date text-muted">{{ formatDate(d.dateAdded) }}</td>
+            <td class="col-remarks text-muted">{{ d.remarks || '—' }}</td>
+            <td class="col-actions">
+              <div class="action-btns">
+                <button class="icon-btn edit-btn" title="Edit Transfer" @click="openEdit(d)">
+                  ✎
+                </button>
+                <button class="icon-btn delete-btn" title="Remove Transfer" @click="remove(d)">
+                  🗑
+                </button>
+              </div>
+            </td>
+          </tr>
+          <tr v-if="filteredRecords.length === 0">
+            <td :colspan="hasSubject ? 10 : 9" class="empty-cell">
+              <div class="empty-state">
+                <span class="empty-icon">🔄</span>
+                <span class="empty-title">No Teacher Transfer records found</span>
+                <span class="empty-sub">
+                  Click "Record Transfer" to register a faculty movement between two schools.
                 </span>
-              </td>
-              <td class="col-center">
-                <div class="actions-wrap">
-                  <button class="action-btn" title="Edit" @click="openEdit(d)">✏️</button>
-                  <button class="action-btn delete" title="Delete" @click="remove(d)">🗑️</button>
-                </div>
-              </td>
-            </tr>
-            <tr v-if="filteredRecords.length === 0">
-              <td :colspan="hasSubject ? 10 : 9" class="empty-row">
-                {{
-                  categoryRecords.length === 0
-                    ? `No ${category} deployment records yet. Click "Add Deployment" to start.`
-                    : 'No records match your search or filter.'
-                }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
 
-    <!-- Add / Edit Modal -->
+    <!-- Record Transfer Modal -->
     <div v-if="isModalOpen" class="modal-overlay" @click.self="isModalOpen = false">
       <div class="modal-card">
         <div class="modal-header">
-          <h3>{{ editingId ? 'Edit' : 'Add' }} {{ category }} Deployment</h3>
-          <button class="close-x" @click="isModalOpen = false">✕</button>
+          <div class="modal-title-group">
+            <h3 class="modal-title">
+              {{ editingId ? 'Edit Teacher Transfer' : `Record ${category} Teacher Transfer` }}
+            </h3>
+            <span class="modal-sub">
+              Transfers record movement from a releasing school to a receiving destination school.
+            </span>
+          </div>
+          <button class="close-btn" @click="isModalOpen = false">✕</button>
         </div>
 
-        <div class="modal-content">
-          <!-- Transfer type toggle -->
-          <div class="form-group">
-            <label>Transfer Type *</label>
-            <div class="type-toggle">
-              <button
-                type="button"
-                class="toggle-btn toggle-in"
-                :class="{ active: form.transferType === 'IN' }"
-                @click="form.transferType = 'IN'"
-              >
-                ⬇ Transfer In
-              </button>
-              <button
-                type="button"
-                class="toggle-btn toggle-out"
-                :class="{ active: form.transferType === 'OUT' }"
-                @click="form.transferType = 'OUT'"
-              >
-                ⬆ Transfer Out
-              </button>
+        <form class="modal-body" @submit.prevent="save">
+          <div v-if="formError" class="form-error-banner">
+            ⚠️ {{ formError }}
+          </div>
+
+          <!-- Name Group -->
+          <div class="form-section-title">TEACHER IDENTIFICATION</div>
+          <div class="form-row form-row-3">
+            <div class="form-group">
+              <label class="form-label">Last Name *</label>
+              <input
+                v-model="form.lastName"
+                type="text"
+                placeholder="e.g. Dela Cruz"
+                class="form-input text-uppercase"
+                required
+              />
+            </div>
+            <div class="form-group">
+              <label class="form-label">First Name *</label>
+              <input
+                v-model="form.firstName"
+                type="text"
+                placeholder="e.g. Juan"
+                class="form-input text-uppercase"
+                required
+              />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Middle Name</label>
+              <input
+                v-model="form.middleName"
+                type="text"
+                placeholder="e.g. Santos"
+                class="form-input text-uppercase"
+              />
             </div>
           </div>
 
-          <div class="section-label">Name of Applicant</div>
-          <div class="form-grid-3">
+          <!-- Transfer Route Group -->
+          <div class="form-section-title">TRANSFER ROUTE (BETWEEN SCHOOLS)</div>
+          <div class="form-row form-row-2">
             <div class="form-group">
-              <label>Last Name *</label>
-              <input v-model="form.lastName" type="text" class="form-input" placeholder="e.g. Dela Cruz" />
-            </div>
-            <div class="form-group">
-              <label>First Name *</label>
-              <input v-model="form.firstName" type="text" class="form-input" placeholder="e.g. Juan" />
-            </div>
-            <div class="form-group">
-              <label>Middle Name</label>
-              <input v-model="form.middleName" type="text" class="form-input" placeholder="e.g. Santos" />
-            </div>
-          </div>
-
-          <div class="form-row">
-            <div class="form-group flex-2">
-              <label>{{ form.transferType === 'OUT' ? 'From School (Transfer Out) *' : 'School (Transfer In) *' }}</label>
+              <label class="form-label">
+                From School (Releasing Faculty) *
+                <span class="badge-mini out-mini">+1 Transfer Out</span>
+              </label>
               <input
                 v-model="form.schoolName"
-                type="text"
+                :list="`from-schools-${category}`"
+                placeholder="Origin / Releasing school"
                 class="form-input"
-                :list="`deploy-schools-${category}`"
-                :placeholder="form.transferType === 'OUT' ? 'School transferring out from' : 'Type or pick a school'"
+                required
               />
-              <datalist :id="`deploy-schools-${category}`">
+              <datalist :id="`from-schools-${category}`">
                 <option v-for="s in schoolOptions" :key="s" :value="s" />
               </datalist>
-              <span v-if="isNewSchool" class="hint hint-new">
-                New school — it will be added to the {{ category }} Analysis table.
+              <span v-if="isNewSchool" class="field-hint text-warning">
+                ℹ️ "{{ form.schoolName }}" will be added as a monitored school.
               </span>
             </div>
 
-            <div v-if="form.transferType === 'OUT'" class="form-group flex-2">
-              <label>To School (Transfer In) *</label>
+            <div class="form-group">
+              <label class="form-label">
+                To School (Receiving Faculty) *
+                <span class="badge-mini in-mini">+1 Transfer In</span>
+              </label>
               <input
                 v-model="form.toSchoolName"
-                type="text"
+                :list="`to-schools-${category}`"
+                placeholder="Destination / Receiving school"
                 class="form-input"
-                :list="`deploy-schools-${category}`"
-                placeholder="Destination school transferring in to"
+                required
               />
-              <span v-if="isNewToSchool" class="hint hint-new">
-                New school — it will be added to the {{ category }} Analysis table.
+              <datalist :id="`to-schools-${category}`">
+                <option v-for="s in schoolOptions" :key="s" :value="s" />
+              </datalist>
+              <span v-if="isNewToSchool" class="field-hint text-warning">
+                ℹ️ "{{ form.toSchoolName }}" will be added as a monitored school.
               </span>
             </div>
+          </div>
 
+          <!-- Subject & Position -->
+          <div class="form-row" :class="hasSubject ? 'form-row-2' : 'form-row-1'">
             <div v-if="hasSubject" class="form-group">
-              <label>Subject *</label>
-              <select v-model="form.subject" class="form-input">
+              <label class="form-label">Subject / Track Specialization *</label>
+              <select v-model="form.subject" class="form-input" required>
+                <option value="" disabled>Select Subject</option>
                 <option v-for="s in subjects" :key="s" :value="s">{{ s }}</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Current Position *</label>
+              <select v-model="form.currentPosition" class="form-input" required>
+                <option v-for="p in POSITIONS" :key="p" :value="p">{{ p }}</option>
               </select>
             </div>
           </div>
 
-          <div class="form-row">
+          <!-- Date & Remarks -->
+          <div class="form-row form-row-2">
             <div class="form-group">
-              <label>Current Position</label>
-              <input v-model="form.currentPosition" type="text" class="form-input" list="deploy-positions" />
-              <datalist id="deploy-positions">
-                <option v-for="p in POSITIONS" :key="p" :value="p" />
-              </datalist>
+              <label class="form-label">Date Effective / Added *</label>
+              <input v-model="form.dateAdded" type="date" class="form-input" required />
             </div>
+
             <div class="form-group">
-              <label>Date Added</label>
-              <input v-model="form.dateAdded" type="date" class="form-input" />
+              <label class="form-label">Remarks / Transfer Reason</label>
+              <input
+                v-model="form.remarks"
+                type="text"
+                placeholder="e.g. Division deployment order, reassignment"
+                class="form-input"
+              />
             </div>
           </div>
 
-          <div class="effect-preview" :class="form.transferType === 'IN' ? 'effect-in' : 'effect-out'">
-            <template v-if="form.transferType === 'IN'">
-              This adds <strong>+1 Transfer In</strong> to
-              <strong>{{ form.schoolName.trim() || 'the selected school' }}</strong>
-              <template v-if="hasSubject && form.subject"> for <strong>{{ form.subject }}</strong></template>.
-            </template>
-            <template v-else>
-              This adds <strong>+1 Transfer Out</strong> to
-              <strong>{{ form.schoolName.trim() || 'From School' }}</strong> and
-              <strong>+1 Transfer In</strong> to
-              <strong>{{ form.toSchoolName.trim() || 'To School' }}</strong>
-              <template v-if="hasSubject && form.subject"> for <strong>{{ form.subject }}</strong></template>.
-            </template>
+          <!-- Dynamic Transfer Effect Notice -->
+          <div class="transfer-effect-alert">
+            <span class="effect-icon">🔄</span>
+            <div class="effect-txt">
+              This transfer adds <strong>+1 Transfer Out</strong> to
+              <span class="highlight-school">{{ form.schoolName || 'From School' }}</span>
+              and <strong>+1 Transfer In</strong> to
+              <span class="highlight-school">{{ form.toSchoolName || 'To School' }}</span>
+              <template v-if="hasSubject && form.subject">
+                for subject <strong>{{ form.subject }}</strong>
+              </template>.
+            </div>
           </div>
 
-          <div v-if="formError" class="form-error">{{ formError }}</div>
-        </div>
-
-        <div class="modal-footer">
-          <button class="btn btn-secondary" @click="isModalOpen = false">Cancel</button>
-          <button class="btn btn-primary" @click="save">
-            {{ editingId ? 'Save Changes' : 'Add Deployment' }}
-          </button>
-        </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="isModalOpen = false">
+              Cancel
+            </button>
+            <button type="submit" class="btn btn-primary">
+              {{ editingId ? 'Update Transfer' : 'Confirm & Record Transfer' }}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.deployment-tab {
+.transfers-tab {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1rem;
 }
 
-/* Toolbar */
-.toolbar-box {
-  background: #ffffff;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: 0.75rem 1rem;
+.tab-toolbar {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  box-shadow: var(--shadow-sm);
   flex-wrap: wrap;
-}
-.toolbar-left,
-.toolbar-right {
-  display: flex;
   align-items: center;
   gap: 0.75rem;
-  flex-wrap: wrap;
+  background: #ffffff;
+  padding: 0.85rem 1.15rem;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
-.search-input-wrap {
+
+.search-box {
   position: relative;
+  flex: 1 1 240px;
   display: flex;
   align-items: center;
 }
+
 .search-icon {
   position: absolute;
-  left: 0.65rem;
-  font-size: 0.8rem;
-  opacity: 0.6;
-}
-.search-input {
-  padding: 0.5rem 2rem 0.5rem 2rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  left: 0.75rem;
   font-size: 0.85rem;
-  width: 280px;
-  outline: none;
-}
-.search-input:focus {
-  border-color: var(--color-primary);
-}
-.clear-btn {
-  position: absolute;
-  right: 0.5rem;
-  border: none;
-  background: none;
-  cursor: pointer;
   color: #94a3b8;
+  pointer-events: none;
 }
-.filter-group {
-  display: flex;
-  background: #f1f5f9;
-  border-radius: var(--radius-md);
-  padding: 0.2rem;
-  gap: 0.15rem;
+
+.search-input {
+  width: 100%;
+  padding: 0.55rem 2rem 0.55rem 2.25rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  color: #0f172a;
+  background: #f8fafc;
+  transition: all 0.15s ease;
 }
-.filter-pill {
+
+.search-input:focus {
+  outline: none;
+  border-color: #2563eb;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.search-clear {
+  position: absolute;
+  right: 0.65rem;
+  background: none;
   border: none;
-  background: transparent;
-  padding: 0.35rem 0.75rem;
-  border-radius: 6px;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: #475569;
+  color: #94a3b8;
+  font-size: 0.8rem;
   cursor: pointer;
 }
-.filter-pill.active {
-  background: #ffffff;
-  color: #0f172a;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
-}
-.filter-pill.pill-in.active {
-  color: #047857;
-}
-.filter-pill.pill-out.active {
-  color: #c2410c;
-}
-.subject-select-wrap {
+
+.filter-item {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: #475569;
-}
-.subject-select {
-  padding: 0.4rem 0.6rem;
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  font-size: 0.8rem;
+  gap: 0.45rem;
 }
 
-/* Buttons */
+.filter-lbl {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.select-input {
+  padding: 0.52rem 1.8rem 0.52rem 0.75rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #1e293b;
+  background: #f8fafc;
+  cursor: pointer;
+}
+
+.select-input:focus {
+  outline: none;
+  border-color: #2563eb;
+  background: #ffffff;
+}
+
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
 .btn {
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  padding: 0.5rem 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1rem;
+  border-radius: 8px;
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
+  transition: all 0.15s ease;
+  border: none;
 }
+
 .btn-primary {
-  background: var(--color-primary);
-  color: #fff;
+  background: #1e40af;
+  color: #ffffff;
+  box-shadow: 0 1px 2px rgba(30, 64, 175, 0.2);
 }
+
 .btn-primary:hover {
-  filter: brightness(1.08);
+  background: #1d4ed8;
 }
+
 .btn-secondary {
-  background: #fff;
-  border-color: var(--color-border);
+  background: #f1f5f9;
+  color: #334155;
+  border: 1px solid #cbd5e1;
+}
+
+.btn-secondary:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.table-card {
+  background: #ffffff;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.transfers-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  text-align: left;
+}
+
+.transfers-table thead th {
+  background: #f8fafc;
+  padding: 0.8rem 1rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #475569;
+  letter-spacing: 0.04em;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+.transfers-table tbody tr {
+  border-bottom: 1px solid #f1f5f9;
+  transition: background 0.12s ease;
+}
+
+.transfers-table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.transfers-table td {
+  padding: 0.75rem 1rem;
+  vertical-align: middle;
+}
+
+.col-no {
+  width: 48px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-align: center;
+}
+
+.name-box {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.school-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.tag-out {
+  background: #fff7ed;
+  color: #c2410c;
+  border: 1px solid #fed7aa;
+}
+
+.tag-in {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.tag-badge {
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+}
+
+.tag-out .tag-badge {
+  background: #fdba74;
+  color: #7c2d12;
+}
+
+.tag-in .tag-badge {
+  background: #93c5fd;
+  color: #1e3a8a;
+}
+
+.col-arrow {
+  width: 28px;
+  text-align: center;
+  color: #94a3b8;
+  font-weight: 700;
+}
+
+.subj-badge {
+  display: inline-block;
+  background: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+  padding: 0.2rem 0.55rem;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.78rem;
+}
+
+.col-pos {
+  font-weight: 500;
   color: #334155;
 }
 
-/* Table */
-.table-container {
-  background: #fff;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sm);
+.col-date {
+  font-size: 0.82rem;
+}
+
+.col-remarks {
+  font-size: 0.82rem;
+  max-width: 180px;
   overflow: hidden;
-}
-.table-responsive {
-  overflow-x: auto;
-}
-.deploy-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.85rem;
-}
-.deploy-table th {
-  background: #f8fafc;
-  color: #334155;
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: 0.6rem 0.85rem;
-  border-bottom: 1px solid var(--color-border);
-  text-align: left;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
-.deploy-table th.group-head {
-  text-align: center;
-  background: #eef2ff;
-  border-bottom: 1px solid #c7d2fe;
-}
-.deploy-table th.sub-head {
-  background: #f5f7ff;
-}
-.deploy-table td {
-  padding: 0.65rem 0.85rem;
-  border-bottom: 1px solid #f1f5f9;
-  color: #1e293b;
-}
-.deploy-table tbody tr:hover td {
-  background: #dbeafe;
-}
-.deploy-table tbody tr:hover td:first-child {
-  box-shadow: inset 4px 0 0 #3b82f6;
-}
-.col-no {
-  width: 48px;
-  text-align: center;
-  color: #64748b;
-}
-.col-center {
-  text-align: center !important;
-}
-.font-bold {
-  font-weight: 700;
-}
-.font-semibold {
-  font-weight: 600;
-}
+
 .text-muted {
   color: #64748b;
 }
-.school-route {
-  display: inline-flex;
+
+.action-btns {
+  display: flex;
   align-items: center;
   gap: 0.4rem;
-  flex-wrap: wrap;
-}
-.school-from {
-  color: #c2410c;
-  background: #fff7ed;
-  border: 1px solid #fed7aa;
-  padding: 0.1rem 0.45rem;
-  border-radius: 6px;
-  font-size: 0.8rem;
-}
-.route-arrow {
-  color: #64748b;
-  font-weight: 700;
-}
-.school-to {
-  color: #047857;
-  background: #ecfdf5;
-  border: 1px solid #a7f3d0;
-  padding: 0.1rem 0.45rem;
-  border-radius: 6px;
-  font-size: 0.8rem;
-}
-.subject-chip {
-  background: #eef2ff;
-  color: #4338ca;
-  padding: 0.15rem 0.5rem;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-.badge-in {
-  background: #059669 !important;
-  color: #ffffff !important;
-  border: 1.5px solid #065f46 !important;
-}
-.badge-out {
-  background: #ea580c !important;
-  color: #ffffff !important;
-  border: 1.5px solid #9a3412 !important;
-}
-.deploy-table tbody tr:hover .badge-in {
-  box-shadow: 0 0 0 3px #6ee7b7, 0 2px 6px rgba(5, 150, 105, 0.35);
-}
-.deploy-table tbody tr:hover .badge-out {
-  box-shadow: 0 0 0 3px #fdba74, 0 2px 6px rgba(234, 88, 12, 0.35);
-}
-.actions-wrap {
-  display: flex;
-  justify-content: center;
-  gap: 0.25rem;
-}
-.action-btn {
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  padding: 0.25rem 0.4rem;
-  border-radius: 6px;
-}
-.action-btn:hover {
-  background: #f1f5f9;
-}
-.action-btn.delete:hover {
-  background: #fee2e2;
-}
-.empty-row {
-  text-align: center;
-  padding: 2.5rem 1rem !important;
-  color: #94a3b8;
 }
 
-/* Modal */
+.icon-btn {
+  background: none;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.edit-btn {
+  color: #2563eb;
+}
+
+.edit-btn:hover {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.delete-btn {
+  color: #dc2626;
+}
+
+.delete-btn:hover {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.empty-cell {
+  padding: 3.5rem 1rem !important;
+  text-align: center;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.empty-icon {
+  font-size: 2.2rem;
+}
+
+.empty-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.empty-sub {
+  font-size: 0.85rem;
+  color: #64748b;
+  max-width: 400px;
+}
+
+/* Modal styles */
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.5);
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  padding: 1rem;
 }
+
 .modal-card {
-  background: #fff;
-  border-radius: 12px;
-  width: 640px;
-  max-width: 95vw;
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  background: #ffffff;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 660px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  animation: modalPop 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 }
+
+@keyframes modalPop {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
 .modal-header {
   display: flex;
+  align-items: flex-start;
   justify-content: space-between;
-  align-items: center;
-  padding: 1rem 1.25rem;
-  border-bottom: 1px solid var(--color-border);
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
 }
-.modal-header h3 {
-  margin: 0;
-  font-size: 1.05rem;
-}
-.close-x {
-  border: none;
-  background: none;
-  font-size: 1rem;
-  cursor: pointer;
-  color: #64748b;
-}
-.modal-content {
-  padding: 1.25rem;
-  overflow-y: auto;
+
+.modal-title-group {
   display: flex;
   flex-direction: column;
-  gap: 0.9rem;
+  gap: 0.2rem;
 }
-.modal-footer {
+
+.modal-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.modal-sub {
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+}
+
+.close-btn:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.modal-body {
+  padding: 1.5rem;
   display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  padding: 0.9rem 1.25rem;
-  border-top: 1px solid var(--color-border);
+  flex-direction: column;
+  gap: 1.15rem;
+  max-height: 80vh;
+  overflow-y: auto;
 }
-.section-label {
+
+.form-section-title {
   font-size: 0.72rem;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
   color: #64748b;
-  margin-bottom: -0.4rem;
+  letter-spacing: 0.05em;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid #f1f5f9;
+  margin-top: 0.25rem;
 }
-.form-grid-3 {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.75rem;
-}
+
 .form-row {
-  display: flex;
-  gap: 0.75rem;
+  display: grid;
+  gap: 0.85rem;
 }
+
+.form-row-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.form-row-2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.form-row-1 {
+  grid-template-columns: 1fr;
+}
+
+@media (max-width: 600px) {
+  .form-row-3,
+  .form-row-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
-  flex: 1;
+  gap: 0.35rem;
 }
-.flex-2 {
-  flex: 2;
-}
-.form-group label {
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: #334155;
-}
-.form-input {
-  padding: 0.5rem 0.65rem;
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  font-size: 0.85rem;
-  outline: none;
-}
-.form-input:focus {
-  border-color: var(--color-primary);
-}
-.hint {
-  font-size: 0.72rem;
-}
-.hint-new {
-  color: #b45309;
-}
-.type-toggle {
-  display: flex;
-  gap: 0.5rem;
-}
-.toggle-btn {
-  flex: 1;
-  padding: 0.6rem;
-  border-radius: 8px;
-  border: 2px solid var(--color-border);
-  background: #fff;
-  font-weight: 700;
-  font-size: 0.85rem;
-  cursor: pointer;
-  color: #64748b;
-}
-.toggle-in.active {
-  border-color: #10b981;
-  background: #ecfdf5;
-  color: #047857;
-}
-.toggle-out.active {
-  border-color: #f97316;
-  background: #fff7ed;
-  color: #c2410c;
-}
-.effect-preview {
-  font-size: 0.82rem;
-  padding: 0.65rem 0.85rem;
-  border-radius: 8px;
-}
-.effect-in {
-  background: #ecfdf5;
-  color: #065f46;
-}
-.effect-out {
-  background: #fff7ed;
-  color: #9a3412;
-}
-.form-error {
-  color: #b91c1c;
+
+.form-label {
   font-size: 0.8rem;
   font-weight: 600;
+  color: #334155;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
-/* Mobile Responsive Adjustments */
-@media (max-width: 768px) {
-  .toolbar-box {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.75rem;
-  }
-  .toolbar-left {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.65rem;
-  }
-  .search-wrap {
-    width: 100%;
-  }
-  .filter-group {
-    width: 100%;
-    overflow-x: auto;
-  }
-  .toolbar-right {
-    flex-wrap: wrap;
-    gap: 0.5rem;
-  }
-  .form-row {
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-  .modal-card {
-    max-width: 95vw;
-    margin: 0.5rem;
-  }
+.badge-mini {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+}
+
+.out-mini {
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+.in-mini {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.form-input {
+  padding: 0.55rem 0.75rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  color: #0f172a;
+  background: #ffffff;
+  transition: all 0.15s ease;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.text-uppercase {
+  text-transform: uppercase;
+}
+
+.field-hint {
+  font-size: 0.75rem;
+  margin-top: 0.2rem;
+}
+
+.text-warning {
+  color: #b45309;
+}
+
+.form-error-banner {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+  padding: 0.65rem 0.85rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.transfer-effect-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  padding: 0.75rem 0.95rem;
+  border-radius: 8px;
+  color: #92400e;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.effect-icon {
+  font-size: 1.1rem;
+}
+
+.highlight-school {
+  font-weight: 700;
+  color: #78350f;
+  text-decoration: underline;
+}
+
+.modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #f1f5f9;
 }
 </style>
-

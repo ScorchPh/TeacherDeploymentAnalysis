@@ -4,11 +4,15 @@ import { tnaStore } from '../stores/tnaStore'
 import type { EsRecord } from '../types/tna'
 import ImportModal from '../components/ImportModal.vue'
 import DeploymentTab from '../components/DeploymentTab.vue'
+import AssignmentAdviceTab from '../components/AssignmentAdviceTab.vue'
 import { downloadTemplateFile, exportCategoryBackupExcel } from '../utils/excelTemplate'
 
-const activeTab = ref<'ANALYSIS' | 'DEPLOYMENT'>('ANALYSIS')
-const deploymentCount = computed(
+const activeTab = ref<'ANALYSIS' | 'TRANSFERS' | 'ASSIGNMENT_ADVICE'>('ANALYSIS')
+const transferCount = computed(
   () => tnaStore.deploymentRecords.filter((d) => d.category === 'ES').length
+)
+const assignmentAdviceCount = computed(
+  () => tnaStore.assignmentAdviceRecords.filter((a) => a.category === 'ES').length
 )
 
 const searchQuery = ref('')
@@ -186,14 +190,18 @@ function resetToDefault() {
       </div>
     </div>
 
-    <!-- Page Tabs: Needs Analysis / Deployment -->
+    <!-- Page Tabs: Needs Analysis / Transfers / Assignment Advice -->
     <div class="page-tabs">
       <button class="page-tab" :class="{ active: activeTab === 'ANALYSIS' }" @click="activeTab = 'ANALYSIS'">
         📊 Needs Analysis
       </button>
-      <button class="page-tab" :class="{ active: activeTab === 'DEPLOYMENT' }" @click="activeTab = 'DEPLOYMENT'">
-        📋 Deployment
-        <span class="page-tab-badge">{{ deploymentCount }}</span>
+      <button class="page-tab" :class="{ active: activeTab === 'TRANSFERS' }" @click="activeTab = 'TRANSFERS'">
+        🔄 Transfers
+        <span class="page-tab-badge">{{ transferCount }}</span>
+      </button>
+      <button class="page-tab" :class="{ active: activeTab === 'ASSIGNMENT_ADVICE' }" @click="activeTab = 'ASSIGNMENT_ADVICE'">
+        📝 Assignment Advice
+        <span class="page-tab-badge">{{ assignmentAdviceCount }}</span>
       </button>
     </div>
 
@@ -378,7 +386,8 @@ function resetToDefault() {
     </div>
 
     </template>
-    <DeploymentTab v-else category="ES" />
+    <DeploymentTab v-else-if="activeTab === 'TRANSFERS'" category="ES" />
+    <AssignmentAdviceTab v-else-if="activeTab === 'ASSIGNMENT_ADVICE'" category="ES" />
 
     <!-- Import Modal -->
     <ImportModal

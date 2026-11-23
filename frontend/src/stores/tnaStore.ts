@@ -7,6 +7,8 @@ import type {
   ShsSubject,
   CategoryType,
   DeploymentRecord,
+  TransferRecord,
+  AssignmentAdviceRecord,
 } from '../types/tna'
 import { JHS_SUBJECTS, SHS_SUBJECTS } from '../types/tna'
 
@@ -129,6 +131,7 @@ export const tnaStore = reactive({
   jhsRecords: [] as JhsRecord[],
   shsRecords: [] as ShsRecord[],
   deploymentRecords: [] as DeploymentRecord[],
+  assignmentAdviceRecords: [] as AssignmentAdviceRecord[],
 
   // Calculation helpers for ES
   calcEsGap(r: EsRecord): number {
@@ -195,22 +198,32 @@ export const tnaStore = reactive({
 
   // ES Mutations
   addEsRecord(record: Omit<EsRecord, 'id'>) {
+    const req = Math.round(Number(record.required) || 0)
+    const exist = Math.round(Number(record.existing) || 0)
     this.esRecords.push({
       ...record,
-      required: Math.round(Number(record.required) || 0),
-      existing: Math.round(Number(record.existing) || 0),
+      required: req,
+      existing: exist,
+      baseExisting: exist,
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     })
+    this.syncAssignmentAdvices('ES')
     this.syncTransfers('ES')
   },
   updateEsRecord(id: string, updates: Partial<EsRecord>) {
     const idx = this.esRecords.findIndex(r => r.id === id)
     if (idx !== -1 && this.esRecords[idx]) {
       const oldName = this.esRecords[idx].schoolName
+      if (updates.existing !== undefined) {
+        this.esRecords[idx].baseExisting = Math.round(Number(updates.existing) || 0)
+      }
       Object.assign(this.esRecords[idx], updates)
       this.esRecords[idx].required = Math.round(Number(this.esRecords[idx].required) || 0)
-      this.esRecords[idx].existing = Math.round(Number(this.esRecords[idx].existing) || 0)
-      if (updates.schoolName) this.renameSchoolInDeployments('ES', oldName, updates.schoolName)
+      if (updates.schoolName) {
+        this.renameSchoolInDeployments('ES', oldName, updates.schoolName)
+        this.renameSchoolInAssignmentAdvices('ES', oldName, updates.schoolName)
+      }
+      this.syncAssignmentAdvices('ES')
       this.syncTransfers('ES')
     }
   },
@@ -222,16 +235,25 @@ export const tnaStore = reactive({
   addJhsRecord(record: Omit<JhsRecord, 'id'>) {
     this.jhsRecords.push({
       ...record,
+      baseExisting: JSON.parse(JSON.stringify(record.existing)),
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     })
+    this.syncAssignmentAdvices('JHS')
     this.syncTransfers('JHS')
   },
   updateJhsRecord(id: string, updates: Partial<JhsRecord>) {
     const idx = this.jhsRecords.findIndex(r => r.id === id)
     if (idx !== -1 && this.jhsRecords[idx]) {
       const oldName = this.jhsRecords[idx].schoolName
+      if (updates.existing) {
+        this.jhsRecords[idx].baseExisting = JSON.parse(JSON.stringify(updates.existing))
+      }
       Object.assign(this.jhsRecords[idx], updates)
-      if (updates.schoolName) this.renameSchoolInDeployments('JHS', oldName, updates.schoolName)
+      if (updates.schoolName) {
+        this.renameSchoolInDeployments('JHS', oldName, updates.schoolName)
+        this.renameSchoolInAssignmentAdvices('JHS', oldName, updates.schoolName)
+      }
+      this.syncAssignmentAdvices('JHS')
       this.syncTransfers('JHS')
     }
   },
@@ -243,16 +265,25 @@ export const tnaStore = reactive({
   addShsRecord(record: Omit<ShsRecord, 'id'>) {
     this.shsRecords.push({
       ...record,
+      baseExisting: JSON.parse(JSON.stringify(record.existing)),
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     })
+    this.syncAssignmentAdvices('SHS')
     this.syncTransfers('SHS')
   },
   updateShsRecord(id: string, updates: Partial<ShsRecord>) {
     const idx = this.shsRecords.findIndex(r => r.id === id)
     if (idx !== -1 && this.shsRecords[idx]) {
       const oldName = this.shsRecords[idx].schoolName
+      if (updates.existing) {
+        this.shsRecords[idx].baseExisting = JSON.parse(JSON.stringify(updates.existing))
+      }
       Object.assign(this.shsRecords[idx], updates)
-      if (updates.schoolName) this.renameSchoolInDeployments('SHS', oldName, updates.schoolName)
+      if (updates.schoolName) {
+        this.renameSchoolInDeployments('SHS', oldName, updates.schoolName)
+        this.renameSchoolInAssignmentAdvices('SHS', oldName, updates.schoolName)
+      }
+      this.syncAssignmentAdvices('SHS')
       this.syncTransfers('SHS')
     }
   },
@@ -267,12 +298,14 @@ export const tnaStore = reactive({
       const rowName = String(row.schoolName || '').trim()
       const rowId = String(row.schoolId || '').trim()
       if (!rowName && !rowId) return
+      const existVal = Math.round(Number(row.existing) || 0)
       freshList.push({
         id: `${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
         schoolId: rowId,
         schoolName: rowName || 'Unnamed School',
         required: Math.round(Number(row.required) || 0),
-        existing: Math.round(Number(row.existing) || 0),
+        existing: existVal,
+        baseExisting: existVal,
         transferOut: 0,
         transferIn: 0,
       })
@@ -281,6 +314,7 @@ export const tnaStore = reactive({
       this.esRecords = freshList
       this.deduplicateSchools()
       this.clearDeploymentsByCategory('ES')
+      this.syncAssignmentAdvices('ES')
       this.syncToDatabase()
     }
   },
@@ -345,7 +379,61 @@ export const tnaStore = reactive({
     }
   },
 
-  // Recalculate every school's Transfer In / Transfer Out from the Deployment list
+  // Recalculate every school's Existing teacher counts from baseExisting + Assignment Advice records
+  syncAssignmentAdvices(category?: CategoryType) {
+    const key = (n?: string) => (n || '').trim().toLowerCase()
+    const cats: CategoryType[] = category ? [category] : ['ES', 'JHS', 'SHS']
+
+    if (cats.includes('ES')) {
+      const esAdvices = this.assignmentAdviceRecords.filter(a => a.category === 'ES')
+      this.esRecords.forEach(school => {
+        const sKey = key(school.schoolName)
+        const advicesCount = esAdvices.filter(a => key(a.schoolName) === sKey).length
+        if (school.baseExisting === undefined) {
+          school.baseExisting = Math.max(0, (Number(school.existing) || 0) - advicesCount)
+        }
+        school.existing = school.baseExisting + advicesCount
+      })
+    }
+
+    if (cats.includes('JHS')) {
+      const jhsAdvices = this.assignmentAdviceRecords.filter(a => a.category === 'JHS')
+      this.jhsRecords.forEach(school => {
+        const sKey = key(school.schoolName)
+        if (!school.baseExisting) {
+          school.baseExisting = {}
+          this.jhsSubjects.forEach(s => {
+            const advicesCount = jhsAdvices.filter(a => key(a.schoolName) === sKey && a.subject === s).length
+            school.baseExisting![s] = Math.max(0, (Number(school.existing[s]) || 0) - advicesCount)
+          })
+        }
+        this.jhsSubjects.forEach(s => {
+          const advicesCount = jhsAdvices.filter(a => key(a.schoolName) === sKey && a.subject === s).length
+          school.existing[s] = (Number(school.baseExisting![s]) || 0) + advicesCount
+        })
+      })
+    }
+
+    if (cats.includes('SHS')) {
+      const shsAdvices = this.assignmentAdviceRecords.filter(a => a.category === 'SHS')
+      this.shsRecords.forEach(school => {
+        const sKey = key(school.schoolName)
+        if (!school.baseExisting) {
+          school.baseExisting = {}
+          this.shsSubjects.forEach(s => {
+            const advicesCount = shsAdvices.filter(a => key(a.schoolName) === sKey && a.subject === s).length
+            school.baseExisting![s] = Math.max(0, (Number(school.existing[s]) || 0) - advicesCount)
+          })
+        }
+        this.shsSubjects.forEach(s => {
+          const advicesCount = shsAdvices.filter(a => key(a.schoolName) === sKey && a.subject === s).length
+          school.existing[s] = (Number(school.baseExisting![s]) || 0) + advicesCount
+        })
+      })
+    }
+  },
+
+  // Recalculate every school's Transfer In / Transfer Out from the Transfers list
   syncTransfers(category: CategoryType) {
     const deployments = this.deploymentRecords.filter(d => d.category === category)
     const key = (n?: string) => (n || '').trim().toLowerCase()
@@ -354,12 +442,10 @@ export const tnaStore = reactive({
       this.esRecords.forEach(school => {
         const sKey = key(school.schoolName)
         school.transferOut = deployments.filter(
-          d => d.transferType === 'OUT' && key(d.schoolName) === sKey
+          d => key(d.schoolName) === sKey && Boolean(d.toSchoolName)
         ).length
         school.transferIn = deployments.filter(
-          d =>
-            (d.transferType === 'IN' && key(d.schoolName) === sKey) ||
-            (d.transferType === 'OUT' && d.toSchoolName && key(d.toSchoolName) === sKey)
+          d => key(d.toSchoolName) === sKey
         ).length
       })
       return
@@ -382,17 +468,11 @@ export const tnaStore = reactive({
       })
       deployments.forEach(d => {
         if (!d.subject || !subjects.includes(d.subject)) return
-        if (d.transferType === 'OUT') {
-          if (key(d.schoolName) === sKey) {
-            tout[d.subject] = (tout[d.subject] ?? 0) + 1
-          }
-          if (d.toSchoolName && key(d.toSchoolName) === sKey) {
-            tin[d.subject] = (tin[d.subject] ?? 0) + 1
-          }
-        } else if (d.transferType === 'IN') {
-          if (key(d.schoolName) === sKey) {
-            tin[d.subject] = (tin[d.subject] ?? 0) + 1
-          }
+        if (key(d.schoolName) === sKey && Boolean(d.toSchoolName)) {
+          tout[d.subject] = (tout[d.subject] ?? 0) + 1
+        }
+        if (key(d.toSchoolName) === sKey) {
+          tin[d.subject] = (tin[d.subject] ?? 0) + 1
         }
       })
       school.transferIn = tin
@@ -404,6 +484,7 @@ export const tnaStore = reactive({
     this.syncTransfers('ES')
     this.syncTransfers('JHS')
     this.syncTransfers('SHS')
+    this.syncAssignmentAdvices()
   },
 
   // Keep deployment entries pointing at a school when it gets renamed
@@ -421,13 +502,25 @@ export const tnaStore = reactive({
     })
   },
 
+  renameSchoolInAssignmentAdvices(category: CategoryType, oldName: string, newName: string) {
+    if (!oldName || !newName || oldName.trim().toLowerCase() === newName.trim().toLowerCase()) return
+    const oldKey = oldName.trim().toLowerCase()
+    this.assignmentAdviceRecords.forEach(a => {
+      if (a.category !== category) return
+      if (a.schoolName.trim().toLowerCase() === oldKey) {
+        a.schoolName = newName.trim()
+      }
+    })
+  },
+
   addDeployment(record: Omit<DeploymentRecord, 'id'>) {
     this.ensureSchoolExists(record.category, record.schoolName)
-    if (record.transferType === 'OUT' && record.toSchoolName) {
+    if (record.toSchoolName) {
       this.ensureSchoolExists(record.category, record.toSchoolName)
     }
     this.deploymentRecords.push({
       ...record,
+      transferType: 'OUT',
       schoolName: record.schoolName.trim(),
       toSchoolName: record.toSchoolName ? record.toSchoolName.trim() : undefined,
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -442,7 +535,7 @@ export const tnaStore = reactive({
     cur.schoolName = cur.schoolName.trim()
     cur.toSchoolName = cur.toSchoolName ? cur.toSchoolName.trim() : undefined
     this.ensureSchoolExists(cur.category, cur.schoolName)
-    if (cur.transferType === 'OUT' && cur.toSchoolName) {
+    if (cur.toSchoolName) {
       this.ensureSchoolExists(cur.category, cur.toSchoolName)
     }
     this.syncTransfers(cur.category)
@@ -458,6 +551,41 @@ export const tnaStore = reactive({
   clearDeploymentsByCategory(category: CategoryType) {
     this.deploymentRecords = this.deploymentRecords.filter(d => d.category !== category)
     this.syncTransfers(category)
+  },
+
+  // ---------------------------------------------------------------------------
+  // Assignment Advice (New Hire / Direct Deployment) Records
+  // ---------------------------------------------------------------------------
+  addAssignmentAdvice(record: Omit<AssignmentAdviceRecord, 'id'>) {
+    this.ensureSchoolExists(record.category, record.schoolName)
+    this.assignmentAdviceRecords.push({
+      ...record,
+      schoolName: record.schoolName.trim(),
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    })
+    this.syncAssignmentAdvices(record.category)
+  },
+
+  updateAssignmentAdvice(id: string, updates: Partial<AssignmentAdviceRecord>) {
+    const cur = this.assignmentAdviceRecords.find(a => a.id === id)
+    if (!cur) return
+    Object.assign(cur, updates)
+    cur.schoolName = cur.schoolName.trim()
+    this.ensureSchoolExists(cur.category, cur.schoolName)
+    this.syncAssignmentAdvices(cur.category)
+  },
+
+  deleteAssignmentAdvice(id: string) {
+    const cur = this.assignmentAdviceRecords.find(a => a.id === id)
+    if (!cur) return
+    const cat = cur.category
+    this.assignmentAdviceRecords = this.assignmentAdviceRecords.filter(a => a.id !== id)
+    this.syncAssignmentAdvices(cat)
+  },
+
+  clearAssignmentAdvicesByCategory(category: CategoryType) {
+    this.assignmentAdviceRecords = this.assignmentAdviceRecords.filter(a => a.category !== category)
+    this.syncAssignmentAdvices(category)
   },
 
   // ---------------------------------------------------------------------------
@@ -590,6 +718,7 @@ export const tnaStore = reactive({
       jhsRecords: this.jhsRecords,
       shsRecords: this.shsRecords,
       deploymentRecords: this.deploymentRecords,
+      assignmentAdviceRecords: this.assignmentAdviceRecords,
     }
 
     const candidates = getApiCandidates()
@@ -664,9 +793,16 @@ export const tnaStore = reactive({
               this.shsRecords = json.data.shsRecords
             }
             if (Array.isArray(json.data.deploymentRecords)) {
-              this.deploymentRecords = json.data.deploymentRecords
+              // Only load valid transfers with destination school (clean start without single-ended transfer-in)
+              this.deploymentRecords = json.data.deploymentRecords.filter(
+                (d: any) => Boolean(d.toSchoolName && d.toSchoolName.trim())
+              )
+            }
+            if (Array.isArray(json.data.assignmentAdviceRecords)) {
+              this.assignmentAdviceRecords = json.data.assignmentAdviceRecords
             }
             this.normalizeAllIntegers()
+            this.syncAssignmentAdvices()
             this.syncAllTransfers()
           } finally {
             setTimeout(() => {
@@ -744,6 +880,14 @@ watch(
 
 watch(
   () => tnaStore.deploymentRecords,
+  () => {
+    scheduleSyncToDatabase()
+  },
+  { deep: true }
+)
+
+watch(
+  () => tnaStore.assignmentAdviceRecords,
   () => {
     scheduleSyncToDatabase()
   },

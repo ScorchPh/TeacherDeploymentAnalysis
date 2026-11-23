@@ -234,13 +234,13 @@ const recentDeployments = computed(() =>
       </div>
 
       <div class="kpi-card">
-        <span class="kpi-label">Deployment Movements</span>
+        <span class="kpi-label">Teacher Transfers</span>
         <div class="kpi-split">
           <span class="t-out-txt">Out: {{ totalTransferOut }}</span>
           <span class="split-sep">|</span>
           <span class="t-in-txt">In: {{ totalTransferIn }}</span>
         </div>
-        <span class="kpi-sub">{{ tnaStore.deploymentRecords.length }} Active Records</span>
+        <span class="kpi-sub">{{ tnaStore.deploymentRecords.length }} Active Transfers</span>
       </div>
 
       <div class="kpi-card card-highlight">
@@ -555,27 +555,27 @@ const recentDeployments = computed(() =>
       </div>
     </div>
 
-    <!-- 6. Recent Deployments & Transfers Feed -->
+    <!-- 6. Recent Transfers Feed -->
     <div class="panel-card">
       <div class="panel-header">
         <div>
-          <h3 class="panel-title">📋 Recent Teacher Deployments & Transfers</h3>
-          <span class="panel-sub">Latest Transfer In / Transfer Out movements across ES, JHS, and SHS</span>
+          <h3 class="panel-title">🔄 Recent Teacher Transfers</h3>
+          <span class="panel-sub">Latest transfer movements between schools across ES, JHS, and SHS</span>
         </div>
-        <span class="count-chip">{{ tnaStore.deploymentRecords.length }} Total Deployments</span>
+        <span class="count-chip">{{ tnaStore.deploymentRecords.length }} Total Transfers</span>
       </div>
 
       <div class="panel-table-wrap">
         <table class="dash-table">
           <thead>
             <tr>
-              <th>Applicant Name</th>
+              <th>Teacher Name</th>
               <th>Level</th>
-              <th>School / Movement Route</th>
+              <th>Transfer Route (From ➔ To)</th>
               <th>Subject</th>
               <th>Position</th>
-              <th>Date Added</th>
-              <th class="col-num">Type</th>
+              <th>Date Effective</th>
+              <th class="col-num">Status</th>
             </tr>
           </thead>
           <tbody>
@@ -585,9 +585,9 @@ const recentDeployments = computed(() =>
                 <span class="cat-badge" :class="`cat-${d.category.toLowerCase()}`">{{ d.category }}</span>
               </td>
               <td class="font-semibold">
-                <template v-if="d.transferType === 'OUT' && d.toSchoolName">
+                <template v-if="d.toSchoolName">
                   <span class="route-from">{{ d.schoolName }}</span>
-                  <span class="route-arr">→</span>
+                  <span class="route-arr">➔</span>
                   <span class="route-to">{{ d.toSchoolName }}</span>
                 </template>
                 <template v-else>
@@ -598,14 +598,14 @@ const recentDeployments = computed(() =>
               <td>{{ d.currentPosition }}</td>
               <td class="text-muted">{{ d.dateAdded }}</td>
               <td class="col-num">
-                <span class="badge" :class="d.transferType === 'IN' ? 'badge-success' : 'badge-out'">
-                  {{ d.transferType === 'IN' ? '⬇ Transfer In' : '⬆ Transfer Out' }}
+                <span class="badge badge-out">
+                  🔄 Transferred
                 </span>
               </td>
             </tr>
             <tr v-if="recentDeployments.length === 0">
               <td colspan="7" class="empty-cell">
-                No deployment records added yet. Open ES, JHS, or SHS and switch to the <strong>Deployment</strong> tab to record teacher transfers.
+                No transfer records recorded yet. Open ES, JHS, or SHS and switch to the <strong>Transfers</strong> tab to record teacher movements.
               </td>
             </tr>
           </tbody>

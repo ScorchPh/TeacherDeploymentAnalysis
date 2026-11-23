@@ -183,6 +183,20 @@ try {
               PRIMARY KEY (`id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+            CREATE TABLE IF NOT EXISTS `assignment_advices` (
+              `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+              `category` VARCHAR(10) NOT NULL,
+              `last_name` VARCHAR(100) NOT NULL,
+              `first_name` VARCHAR(100) NOT NULL,
+              `middle_name` VARCHAR(100) NOT NULL DEFAULT '',
+              `school_name` VARCHAR(150) NOT NULL,
+              `subject` VARCHAR(64) DEFAULT NULL,
+              `current_position` VARCHAR(100) NOT NULL DEFAULT 'Teacher I',
+              `date_added` DATE NOT NULL,
+              `remarks` VARCHAR(255) DEFAULT NULL,
+              PRIMARY KEY (`id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
             CREATE TABLE IF NOT EXISTS `tna_users` (
               `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
               `email` VARCHAR(150) NOT NULL UNIQUE,
@@ -686,6 +700,37 @@ try {
                 }
             }
 
+            // 6. Sync Assignment Advices
+            if (isset($payload['assignmentAdviceRecords']) && is_array($payload['assignmentAdviceRecords'])) {
+                $pdo->exec("DELETE FROM `assignment_advices`");
+                $stmtAdv = $pdo->prepare("
+                    INSERT INTO `assignment_advices` (
+                        `category`, `last_name`, `first_name`, `middle_name`,
+                        `school_name`, `subject`, `current_position`, `date_added`, `remarks`
+                    ) VALUES (
+                        :category, :last_name, :first_name, :middle_name,
+                        :school_name, :subject, :current_position, :date_added, :remarks
+                    )
+                ");
+                foreach ($payload['assignmentAdviceRecords'] as $a) {
+                    $dateAdded = trim((string)($a['dateAdded'] ?? ''));
+                    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateAdded)) {
+                        $dateAdded = date('Y-m-d');
+                    }
+                    $stmtAdv->execute([
+                        ':category'         => (string)($a['category'] ?? 'ES'),
+                        ':last_name'        => trim((string)($a['lastName'] ?? '')),
+                        ':first_name'       => trim((string)($a['firstName'] ?? '')),
+                        ':middle_name'      => trim((string)($a['middleName'] ?? '')),
+                        ':school_name'      => trim((string)($a['schoolName'] ?? '')),
+                        ':subject'          => !empty($a['subject']) ? trim((string)$a['subject']) : null,
+                        ':current_position' => trim((string)($a['currentPosition'] ?? 'TEACHER I')),
+                        ':date_added'       => $dateAdded,
+                        ':remarks'          => !empty($a['remarks']) ? trim((string)$a['remarks']) : null,
+                    ]);
+                }
+            }
+
             // Mark in tna_settings that user data has been synced
             $stmtSetting->execute([
                 ':k' => 'is_synced',
@@ -814,7 +859,7 @@ try {
         ];
     }, $shsSchoolRows);
 
-    // Load Deployments
+    // Load Deployments (Transfers)
     $depRows = $pdo->query("SELECT * FROM `deployments` ORDER BY `id` ASC")->fetchAll();
     $deploymentRecords = array_map(function ($d) {
         return [
@@ -833,6 +878,26 @@ try {
         ];
     }, $depRows);
 
+    // Load Assignment Advices
+    $advRows = [];
+    try {
+        $advRows = $pdo->query("SELECT * FROM `assignment_advices` ORDER BY `id` ASC")->fetchAll();
+    } catch (Throwable $ignored) {}
+    $assignmentAdviceRecords = array_map(function ($a) {
+        return [
+            'id'              => (string)$a['id'],
+            'category'        => (string)$a['category'],
+            'lastName'        => (string)$a['last_name'],
+            'firstName'       => (string)$a['first_name'],
+            'middleName'      => (string)$a['middle_name'],
+            'schoolName'      => (string)$a['school_name'],
+            'subject'         => $a['subject'] ? (string)$a['subject'] : null,
+            'currentPosition' => (string)$a['current_position'],
+            'dateAdded'       => (string)$a['date_added'],
+            'remarks'         => $a['remarks'] ? (string)$a['remarks'] : null,
+        ];
+    }, $advRows);
+
     $dbName = $_ENV['DB_NAME'] ?? getenv('DB_NAME') ?? 'depedlapulapu_tna';
     $hasDbRecords = (!empty($esRecords) || !empty($jhsRecords) || !empty($shsRecords));
     $isSynced = ($settings['is_synced'] ?? '0') === '1' || $hasDbRecords;
@@ -846,13 +911,14 @@ try {
         'api_version'   => '1.7.0',
         'isSynced'      => $isSynced,
         'data'          => [
-            'schoolYear'        => $schoolYear,
-            'jhsSubjects'       => $jhsSubjects,
-            'shsSubjects'       => $shsSubjects,
-            'esRecords'         => $esRecords,
-            'jhsRecords'        => $jhsRecords,
-            'shsRecords'        => $shsRecords,
-            'deploymentRecords' => $deploymentRecords,
+            'schoolYear'              => $schoolYear,
+            'jhsSubjects'             => $jhsSubjects,
+            'shsSubjects'             => $shsSubjects,
+            'esRecords'               => $esRecords,
+            'jhsRecords'              => $jhsRecords,
+            'shsRecords'              => $shsRecords,
+            'deploymentRecords'       => $deploymentRecords,
+            'assignmentAdviceRecords' => $assignmentAdviceRecords,
         ],
     ]);
 } catch (Throwable $e) {
